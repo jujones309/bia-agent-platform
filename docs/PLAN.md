@@ -10,7 +10,7 @@ Marca cada tarea con `[x]` al terminarla y haz un commit por tarea o grupo peque
 |---|---|
 | Alcance MVP | Creación de agentes vía Builder + playground + inventarios + trazas |
 | Caso real | Asistente de facturación de servicio al cliente |
-| Stack | FastAPI (Railway) + Supabase (Postgres + pgvector) + OpenAI + Next.js (Vercel, al final) |
+| Stack | FastAPI (Vercel, proyecto aparte del frontend) + Supabase (Postgres + pgvector) + OpenAI + Next.js (Vercel, al final) |
 | Orquestación | Loop propio de tool-calling, sin frameworks |
 | Agente | Spec declarativa versionada en la base; un único runtime genérico la ejecuta |
 | Builder | Un request con la descripción → propuesta de spec → el usuario la ajusta con `PATCH` antes de publicar |
@@ -45,14 +45,14 @@ Ver **Recortes** al final si el tiempo aprieta.
 
 Objetivo: repo listo, `/health` respondiendo en Railway desde el día uno.
 
-- [ ] **0.1 Repo y estructura** — Crear el repo privado, clonar, crear las carpetas de `backend/bia/` y `backend/tests/` según `CLAUDE.md`. Commit de `CLAUDE.md` y `PLAN.md`. *Listo cuando:* el árbol está en GitHub.
-- [ ] **0.2 Proyecto Python** — `uv init`, dependencias base (`fastapi`, `uvicorn[standard]`, `openai`, `sqlalchemy`, `psycopg[binary]`, `pgvector`, `pydantic-settings`) y dev (`pytest`, `ruff`, `httpx`). *Listo cuando:* `uv sync` corre sin errores.
-- [ ] **0.3 Settings** — `bia/settings/config.py` con `Settings` (`openai_api_key`, `database_url`, `log_level`, `environment`) y `.env.example`. *Listo cuando:* la app falla con un error claro si falta una variable.
-- [ ] **0.4 App y logging** — `bia/api/main.py` con la app FastAPI, configuración de logging y `GET /health`. *Listo cuando:* `uv run uvicorn bia.api.main:app --reload` responde en `/health`.
-- [ ] **0.5 Test de health** — `tests/api/test_main.py` con `TestClient`, que verifica status y body. *Listo cuando:* `uv run pytest` pasa.
-- [ ] **0.6 Ruff + pytest config** — Configurar ruff (línea, reglas) y pytest en `pyproject.toml` usando los comandos de uv. *Listo cuando:* `uv run ruff check .` queda limpio.
+- [x] **0.1 Repo y estructura** — Crear el repo privado, clonar, crear las carpetas de `backend/bia/` y `backend/tests/` según `CLAUDE.md`. Commit de `CLAUDE.md` y `PLAN.md`. *Listo cuando:* el árbol está en GitHub.
+- [x] **0.2 Proyecto Python** — `uv init`, dependencias base (`fastapi`, `uvicorn[standard]`, `openai`, `sqlalchemy`, `psycopg[binary]`, `pgvector`, `pydantic-settings`) y dev (`pytest`, `ruff`, `httpx`). *Listo cuando:* `uv sync` corre sin errores.
+- [x] **0.3 Settings** — `bia/settings/config.py` con `Settings` (`openai_api_key`, `database_url`, `log_level`, `environment`) y `.env.example`. *Listo cuando:* la app falla con un error claro si falta una variable.
+- [x] **0.4 App y logging** — `bia/api/main.py` con la app FastAPI, configuración de logging y `GET /health`. *Listo cuando:* `uv run uvicorn bia.api.main:app --reload` responde en `/health`.
+- [x] **0.5 Test de health** — `tests/api/test_main.py` con `TestClient`, que verifica status y body. *Listo cuando:* `uv run pytest` pasa.
+- [x] **0.6 Ruff + pytest config** — Configurar ruff (línea, reglas) y pytest en `pyproject.toml` usando los comandos de uv. *Listo cuando:* `uv run ruff check .` queda limpio.
 - [ ] **0.7 Supabase** — Crear el proyecto y habilitar la extensión `vector`. Copiar la connection string (pooler) a `.env`. *Listo cuando:* conectas con `psql` o desde el SQL editor.
-- [ ] **0.8 Railway** — Crear la cuenta y el proyecto conectado al repo, con root `backend/`, start command `uvicorn bia.api.main:app --host 0.0.0.0 --port $PORT` y variables de entorno. *Listo cuando:* `/health` responde en la URL pública.
+- [ ] **0.8 Vercel (backend)** — Importar el repo en vercel.com/new con Root Directory `backend/`, agregar `[tool.vercel] entrypoint = "bia.api.main:app"` en `pyproject.toml` y cargar las variables de entorno. Usar la connection string del *transaction pooler* de Supabase (puerto 6543), porque el entorno es serverless. *Listo cuando:* `/health` responde en la URL pública.
 - [ ] **0.9 CI mínimo** — GitHub Action que corre `ruff` y `pytest` en cada push. *Listo cuando:* el check sale en verde.
 
 ## Fase 1 — Modelo de datos y base
