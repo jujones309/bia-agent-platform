@@ -51,8 +51,8 @@ Objetivo: repo listo, `/health` respondiendo en Railway desde el día uno.
 - [x] **0.4 App y logging** — `bia/api/main.py` con la app FastAPI, configuración de logging y `GET /health`. *Listo cuando:* `uv run uvicorn bia.api.main:app --reload` responde en `/health`.
 - [x] **0.5 Test de health** — `tests/api/test_main.py` con `TestClient`, que verifica status y body. *Listo cuando:* `uv run pytest` pasa.
 - [x] **0.6 Ruff + pytest config** — Configurar ruff (línea, reglas) y pytest en `pyproject.toml` usando los comandos de uv. *Listo cuando:* `uv run ruff check .` queda limpio.
-- [ ] **0.7 Supabase** — Crear el proyecto y habilitar la extensión `vector`. Copiar la connection string (pooler) a `.env`. *Listo cuando:* conectas con `psql` o desde el SQL editor.
-- [ ] **0.8 Vercel (backend)** — Importar el repo en vercel.com/new con Root Directory `backend/`, agregar `[tool.vercel] entrypoint = "bia.api.main:app"` en `pyproject.toml` y cargar las variables de entorno. Usar la connection string del *transaction pooler* de Supabase (puerto 6543), porque el entorno es serverless. *Listo cuando:* `/health` responde en la URL pública.
+- [x] **0.7 Supabase** — Crear el proyecto y habilitar la extensión `vector`. Copiar la connection string (pooler) a `.env`. *Listo cuando:* conectas con `psql` o desde el SQL editor.
+- [x] **0.8 Vercel (backend)** — Importar el repo en vercel.com/new con Root Directory `backend/`, agregar `[tool.vercel] entrypoint = "bia.api.main:app"` en `pyproject.toml` y cargar las variables de entorno. Usar la connection string del *transaction pooler* de Supabase (puerto 6543), porque el entorno es serverless. *Listo cuando:* `/health` responde en la URL pública.
 - [x] **0.9 CI mínimo** — GitHub Action que corre `ruff` y `pytest` en cada push. *Listo cuando:* el check sale en verde.
 
 ## Fase 1 — Modelo de datos y base
