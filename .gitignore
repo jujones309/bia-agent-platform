@@ -1,0 +1,19 @@
+docs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Deploy
+.vercel/
+
+# OS
+.DS_Store
