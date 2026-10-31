@@ -37,7 +37,9 @@ def test_log_level_defaults_to_info(monkeypatch: pytest.MonkeyPatch) -> None:
     assert load_settings().log_level is LogLevel.INFO
 
 
-@pytest.mark.parametrize("variable", ["OPENAI_API_KEY", "DATABASE_URL", "ENVIRONMENT"])
+@pytest.mark.parametrize(
+    "variable", ["OPENAI_API_KEY", "DATABASE_URL", "API_ACCESS_PASSWORD", "ENVIRONMENT"]
+)
 def test_missing_variable_fails_naming_it(variable: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """Verifies each required variable, when absent, is named in the startup error."""
     monkeypatch.delenv(variable)
@@ -51,6 +53,14 @@ def test_empty_secret_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "")
 
     with pytest.raises(SettingsError, match="OPENAI_API_KEY"):
+        load_settings()
+
+
+def test_short_access_password_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies a guessable password cannot protect a public deployment."""
+    monkeypatch.setenv("API_ACCESS_PASSWORD", "too-short")
+
+    with pytest.raises(SettingsError, match="API_ACCESS_PASSWORD"):
         load_settings()
 
 

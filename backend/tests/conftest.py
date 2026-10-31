@@ -4,5 +4,6 @@ import os
 # Process variables take precedence over backend/.env, so tests never see real secrets.
 os.environ["OPENAI_API_KEY"] = "test-openai-key"
 os.environ["DATABASE_URL"] = "postgresql://test:test@localhost:5432/test"
+os.environ["API_ACCESS_PASSWORD"] = "test-access-password"
 os.environ["ENVIRONMENT"] = "test"
 os.environ["LOG_LEVEL"] = "INFO"

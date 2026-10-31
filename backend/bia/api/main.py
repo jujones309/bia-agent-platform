@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI
 
 from bia.api.artifacts import HealthResponse, HealthStatus
+from bia.api.auth import BasicAuthMiddleware, PublicPath
 from bia.settings.config import LogLevel, get_settings
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,12 @@ def create_app() -> FastAPI:
     settings = get_settings()
     _configure_logging(settings.log_level)
     application = FastAPI(title="Bia Agent Platform")
-    application.add_api_route("/health", _health, methods=["GET"], response_model=HealthResponse)
+    application.add_middleware(
+        BasicAuthMiddleware, password=settings.api_access_password.get_secret_value()
+    )
+    application.add_api_route(
+        PublicPath.HEALTH, _health, methods=["GET"], response_model=HealthResponse
+    )
     logger.info("Application started in %s environment", settings.environment.value)
     return application
 

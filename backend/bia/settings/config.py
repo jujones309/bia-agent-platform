@@ -53,6 +53,7 @@ class Settings(BaseSettings):
 
     openai_api_key: SecretStr = Field(min_length=1)
     database_url: SecretStr = Field(min_length=1)
+    api_access_password: SecretStr = Field(min_length=16)
     environment: Environment
     log_level: LogLevel = LogLevel.INFO
 
