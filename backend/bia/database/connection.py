@@ -2,7 +2,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
 
-from sqlalchemy import Engine, create_engine, make_url
+from sqlalchemy import Connection, Engine, create_engine, make_url
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
@@ -42,17 +42,18 @@ def get_engine() -> Engine:
 
 
 @contextmanager
-def database_session(engine: Engine) -> Iterator[Session]:
+def database_session(bind: Engine | Connection) -> Iterator[Session]:
     """Opens a session whose work is committed together or not at all.
 
     Exists so callers never manage transactions by hand: leaving the block commits, and
     an exception rolls back and propagates. Used by every vertical that touches the database.
 
     Args:
-        engine: The engine to connect through.
+        bind: The engine to connect through, or a connection whose outer transaction the
+            session joins, as tests do to leave the database untouched.
 
     Returns:
         Iterator[Session]: yields the session bound to the open transaction.
     """
-    with Session(engine) as session, session.begin():
+    with Session(bind) as session, session.begin():
         yield session

@@ -41,6 +41,10 @@ class SqlOperation(StrEnum):
     GET_BY_ID = "get_by_id"
     UPSERT = "upsert"
     DEACTIVATE_EXCEPT = "deactivate_except"
+    INSERT = "insert"
+    FINISH = "finish"
+    LIST_BY_RUNS = "list_by_runs"
+    METRICS_BY_AGENT = "metrics_by_agent"
 
 
 class SqlFileNotFoundError(FileNotFoundError):
