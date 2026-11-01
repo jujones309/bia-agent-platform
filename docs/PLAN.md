@@ -173,11 +173,11 @@ Objetivo: no se publica nada sin pasar pruebas, y se puede vigilar en producció
 
 Objetivo: el asistente de facturación creado a través de la plataforma, tal como se verá en el video.
 
-- [ ] **10.1 Base de conocimiento** — Crear la base "Facturación" e ingerir los 3 documentos.
-- [ ] **10.2 Builder** — Desde Swagger, enviar una descripción de servicio al cliente a `check` (debe dar `not_exists`) y luego a `propose`. Revisar la spec propuesta.
-- [ ] **10.3 Ajuste y evals** — Ajustar la spec si hace falta, correr evals e iterar hasta pasar el umbral.
-- [ ] **10.4 Publicar y probar** — Publicar y lanzar 5 preguntas reales en el playground: saldo de un cliente, explicación de una tarifa, procedimiento de reclamo y una pregunta fuera de alcance.
-- [ ] **10.5 Probar duplicados** — Pedir al Builder "un bot que responda dudas de facturas". Debe devolver `exists` con el asistente. *Listo cuando:* el flujo completo queda grabable.
+- [x] **10.1 Base de conocimiento** — Crear la base "Facturación" e ingerir los 3 documentos.
+- [x] **10.2 Builder** — Desde Swagger, enviar una descripción de servicio al cliente a `check` (debe dar `not_exists`) y luego a `propose`. Revisar la spec propuesta.
+- [x] **10.3 Ajuste y evals** — Ajustar la spec si hace falta, correr evals e iterar hasta pasar el umbral.
+- [x] **10.4 Publicar y probar** — Publicar y lanzar 5 preguntas reales en el playground: saldo de un cliente, explicación de una tarifa, procedimiento de reclamo y una pregunta fuera de alcance.
+- [x] **10.5 Probar duplicados** — Pedir al Builder "un bot que responda dudas de facturas". Debe devolver `exists` con el asistente. *Listo cuando:* el flujo completo queda grabable.
 
 ## Fase 11 — Inventarios y orquestación
 

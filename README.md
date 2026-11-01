@@ -4,10 +4,10 @@ Plataforma interna donde cualquier persona de Bia puede crear un agente de IA a 
 catálogo curado de modelos y herramientas. Todo lo que hace cada agente queda registrado:
 ejecuciones, pasos, tokens, costo y latencia.
 
-El primer agente construido con la plataforma será el asistente de facturación de servicio al
+El primer agente construido con la plataforma es el asistente de facturación de servicio al
 cliente, que responde con RAG sobre tarifas, procedimientos y preguntas frecuentes.
 
-## Cómo funcionará
+## Cómo funciona
 
 Un agente es **configuración declarativa y versionada en la base de datos**, nunca código
 generado. Un único runtime genérico lee esa configuración (la *spec*) y la ejecuta.
@@ -37,14 +37,15 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | 7 | RAG | Terminada |
 | 8 | Agent Builder | Terminada |
 | 9 | Evals y publicación | Terminada |
-| 10-14 | Caso real, frontend y entrega | Pendientes |
+| 10 | Caso real end-to-end | Terminada |
+| 11-14 | Inventarios, frontend, documento y entrega | Pendientes |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
 el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime,
 el registro de agentes, las bases de conocimiento con búsqueda citable, el Agent Builder, que detecta
 duplicados y propone la spec, y los evals con su gate de publicación. Ya funciona toda la lista
-anterior por API. Falta crear el caso real a través de la plataforma, los inventarios y el frontend. El
-detalle está en [docs/PLAN.md](docs/PLAN.md).
+anterior por API, y el asistente de facturación ya se creó y publicó a través de la plataforma. Faltan
+los inventarios y el frontend. El detalle está en [docs/PLAN.md](docs/PLAN.md).
 
 ## Stack
 
@@ -964,3 +965,91 @@ El juez, la validación de casos, los números del gate y de la deriva, y los ro
 ```bash
 INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/evals tests/agents tests/builder
 ```
+
+---
+
+## Guía: fase 10 — Caso real end-to-end
+
+Esta fase no agrega código: crea el asistente de facturación con la API de las fases anteriores, sobre la
+base de `.env`, y usa OpenAI de verdad. El resultado ya está en esa base:
+
+| Recurso | Valor |
+|---|---|
+| Agente | `Bia Facturación`, `9fab0cc7-1163-4ca6-b606-5165877092c6`, `published`, versión 1 |
+| Base de conocimiento | `Facturación`, `7ec3c166-c2a7-4489-a964-302f8a6704d4`, 3 documentos y 22 chunks |
+| Modelo elegido por el diseñador | GPT-6 Luna (`small`) |
+| Herramientas | `consultar_factura` y `buscar_conocimiento` |
+
+La prueba se hizo con `curl` contra la API local, no haciendo clic en Swagger. Son los mismos endpoints, y
+`/docs` responde con la contraseña compartida.
+
+### Requisito: `runs.error`
+
+Esta base nunca había recibido la migración de la fase 5, y `check` y `propose` respondían 500 con
+`column "error" does not exist`. Si otra base se queda así, aplica el `ALTER` de la guía de la fase 5.
+
+### Repetir el flujo
+
+Cada paso está explicado en su fase; aquí va el orden y lo que pasó en la prueba:
+
+| Paso | Llamada | Resultado |
+|---|---|---|
+| 1. Crear la base e ingerir | `POST /knowledge-bases`, `POST /knowledge-bases/{id}/ingest` (ver fase 7) | 6 chunks de tarifas, 7 de procedimientos y 9 de FAQ |
+| 2. Chequear | `POST /builder/check` | `not_exists`, sin llamar al juez, porque no había agentes publicados |
+| 3. Proponer | `POST /builder/propose` | Agente en `draft`, con la spec y la justificación |
+| 4. Generar casos | `POST /agents/{id}/eval-cases/generate` | 10 casos |
+| 5. Agregar casos con clientes reales | `POST /agents/{id}/eval-cases` | 2 casos, con los clientes `100001` y `100006` |
+| 6. Correr evals | `POST /agents/{id}/evals/run` | 12 de 12 en `pass` (100 %), sin ajustar la spec |
+| 7. Publicar | `POST /agents/{id}/publish` | `published` |
+| 8. Preguntar | `POST /agents/{id}/run` | Ver la tabla siguiente |
+| 9. Pedir un duplicado | `POST /builder/check` con "un bot que responda dudas de facturas" | `exists`, con el asistente como candidato (similitud 0,65) |
+
+La descripción enviada a `check` y `propose` fue:
+
+> Un asistente para servicio al cliente que responda dudas de facturación de los clientes de Bia:
+> consultar el saldo y la fecha límite de un cliente, explicar tarifas y guiar el procedimiento de reclamo,
+> rechazando lo que esté fuera de alcance
+
+Como control, "un asistente que ayude a RRHH a redactar ofertas de empleo" dio `not_exists` con el mismo
+candidato en la búsqueda.
+
+### Preguntas de la demo
+
+Las cifras y los plazos de estas respuestas se compararon con los datos y los documentos de origen.
+
+| Pregunta | Qué hizo el agente | Costo (USD) | Latencia |
+|---|---|---|---|
+| ¿Cuál es el saldo del cliente 100002 y cuál es su fecha límite de pago? | `consultar_factura`: 96.300 COP, 18 de noviembre de 2026 | 0,00016 | 7 s |
+| ¿Cuánto cuesta el kWh en estrato 2 y qué pasa si consumo más del consumo de subsistencia? | `buscar_conocimiento`: 515 COP, y 1.030 COP por encima del límite, con cita | 0,00041 | 14 s |
+| ¿Cómo presento un reclamo por mi factura y en cuánto tiempo me responden? | `buscar_conocimiento`: pasos, canales y 15 días hábiles, con cita | 0,00032 | 14 s |
+| ¿Por qué me aparece un saldo negativo? Soy el cliente 100006. | Las dos herramientas: 25.000 COP a favor, con cita | 0,00040 | 15 s |
+| ¿Me recomiendas un buen restaurante en Bogotá para esta noche? | Ninguna herramienta: lo rechaza y dice en qué puede ayudar | 0,00008 | 3 s |
+
+Las trazas se consultan en `GET /runs?agent_id=9fab0cc7-1163-4ca6-b606-5165877092c6`.
+
+### Costo y duración
+
+Todo el flujo, con el chequeo de control incluido, costó unos USD 0,034.
+
+| Parte | Costo (USD) | Duración |
+|---|---|---|
+| Ingesta de los 3 documentos | 0,00004 | 2 s de embeddings |
+| Juez de duplicados y sus embeddings (3 chequeos) | 0,00023 | 6 s de mediana |
+| Diseñador (1 propuesta) | 0,01012 | 14 s |
+| Generador de casos (10 casos) | 0,01729 | 23 s |
+| Runs del agente en la corrida de evals (12) | 0,00265 | 3 min 31 s en total, con el juez |
+| Juez de evals (12) | 0,00196 | Incluido en la fila anterior |
+| Runs del agente en el playground (5) | 0,00137 | 14 s de mediana |
+
+### Limitaciones actuales
+
+- **El flujo ya no se puede grabar desde cero sobre esta base.** `check` ahora responde `exists` para la
+  descripción original, y `propose` crearía un segundo agente, porque no vuelve a chequear duplicados. No hay
+  endpoint para borrar agentes ni documentos. Para grabar los pasos 2 a 7 hace falta una base nueva y migrada.
+- **Una pregunta que mezcla varios temas puede recuperar poco.** En un caso de evals con saldo, tarifa y
+  reclamo a la vez, el agente dijo que solo encontró cargos adicionales sobre tarifas. Se abstuvo de inventar,
+  así que el caso aprobó, pero la respuesta sirvió menos que la de una pregunta directa.
+- **La corrida de 12 casos tardó 3 min 31 s.** Si se dispara contra el backend desplegado, se puede acercar al
+  tiempo máximo de la plataforma (ver fase 9). No se probó contra el despliegue; esa revisión es de la fase 14.
+- **10 de los 12 casos son generados**, y los 3 que piden un cliente concreto inventan su número, así que
+  terminan en "no encontrado". Los clientes existentes los prueban solo los 2 casos manuales.
