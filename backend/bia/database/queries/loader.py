@@ -39,6 +39,8 @@ class SqlOperation(StrEnum):
     SEED = "seed"  # the table's idempotent initial rows
     LIST = "list"
     GET_BY_ID = "get_by_id"
+    UPSERT = "upsert"
+    DEACTIVATE_EXCEPT = "deactivate_except"
 
 
 class SqlFileNotFoundError(FileNotFoundError):

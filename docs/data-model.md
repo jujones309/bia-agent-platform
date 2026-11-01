@@ -54,7 +54,7 @@ es único.
 | `description` | `text` | Qué hace; el modelo y el diseñador deciden con este texto. |
 | `parameters_schema` | `jsonb` | JSON Schema de los argumentos. |
 | `risk_level` | `text` | Qué tan delicado es su efecto. Propuesto: `low`, `medium`, `high`. |
-| `is_active` | `boolean` | Si puede asignarse a agentes. |
+| `is_active` | `boolean` | Si puede asignarse a agentes. Lo controla la sincronización: activa si está en el registry, inactiva si salió del código. |
 | `created_at` | `timestamptz` | Cuándo entró al catálogo. |
 
 ## Agentes
