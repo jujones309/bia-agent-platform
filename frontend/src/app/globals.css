@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer components {
+  .button-primary {
+    @apply rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300;
+  }
+
+  .button-secondary {
+    @apply rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400;
+  }
+
+  .field-input {
+    @apply mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-600 focus:outline-none;
+  }
+
+  .field-label {
+    @apply block text-sm font-medium text-slate-700;
+  }
+
+  .card {
+    @apply rounded-lg border border-slate-200 bg-white p-4;
+  }
+
+  .text-link {
+    @apply font-medium text-emerald-700 hover:underline;
+  }
+
+  .markdown-text {
+    @apply space-y-2 wrap-break-word;
+  }
+
+  .markdown-text ul {
+    @apply list-disc pl-5;
+  }
+
+  .markdown-text ol {
+    @apply list-decimal pl-5;
+  }
+
+  .markdown-text a {
+    @apply underline;
+  }
+
+  .page-title {
+    @apply text-xl font-semibold text-slate-900;
+  }
+
+  .page-intro {
+    @apply mt-1 mb-6 text-sm text-slate-600;
+  }
+}
+
+body {
+  @apply bg-slate-50 text-slate-900;
+}
