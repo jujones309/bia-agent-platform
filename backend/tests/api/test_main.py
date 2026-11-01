@@ -29,14 +29,19 @@ def _replace_database_session(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(main, "database_session", lambda _engine: nullcontext(sentinel.session))
 
 
-def test_startup_syncs_the_tool_catalog_before_serving(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verifies the catalog is already synced by the time the first request arrives."""
-    synced_sessions: list[object] = []
+def test_startup_syncs_tools_and_system_agents_before_serving(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verifies the catalog and the builder are in place by the time the first request arrives."""
+    synced_tools: list[object] = []
+    synced_agents: list[object] = []
     _replace_database_session(monkeypatch)
-    monkeypatch.setattr(main, "sync_tools", synced_sessions.append)
+    monkeypatch.setattr(main, "sync_tools", synced_tools.append)
+    monkeypatch.setattr(main, "sync_system_agents", synced_agents.append)
 
     with TestClient(app) as client:
-        assert synced_sessions == [sentinel.session]
+        assert synced_tools == [sentinel.session]
+        assert synced_agents == [sentinel.session]
         assert client.get("/health").status_code == 200
 
 
@@ -46,6 +51,18 @@ def test_startup_fails_when_the_tool_catalog_cannot_be_synced(
     """Verifies a failed sync aborts the startup instead of being swallowed."""
     _replace_database_session(monkeypatch)
     monkeypatch.setattr(main, "sync_tools", _raise_database_down)
+
+    with pytest.raises(ConnectionError, match="database down"), TestClient(app):
+        pass
+
+
+def test_startup_fails_when_the_system_agents_cannot_be_synced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verifies the API does not serve a builder that could not be registered."""
+    _replace_database_session(monkeypatch)
+    monkeypatch.setattr(main, "sync_tools", lambda _session: None)
+    monkeypatch.setattr(main, "sync_system_agents", _raise_database_down)
 
     with pytest.raises(ConnectionError, match="database down"), TestClient(app):
         pass
