@@ -29,8 +29,8 @@ El flujo para crear un agente, llamado Agent Builder, es:
 |---|---|
 | Documento de arquitectura | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Guion del video | [docs/VIDEO_SCRIPT.md](docs/VIDEO_SCRIPT.md) |
-| Backend desplegado | Pendiente de verificar (ver la guía de la fase 14) |
-| Frontend desplegado | Pendiente (ver la guía de la fase 14) |
+| Backend desplegado | https://bia-agent-platform.vercel.app (Swagger en `/docs`) |
+| Frontend desplegado | https://bia-agent-platform-frontend.vercel.app |
 | Video | Pendiente de grabar |
 
 Para correrlo en local: levanta el backend con la [guía de la fase 0](#guía-fase-0--setup-y-deploy) y el
@@ -52,9 +52,9 @@ frontend con la [guía de la fase 12](#guía-fase-12--frontend).
 | 9 | Evals y publicación | Terminada |
 | 10 | Caso real end-to-end | Terminada |
 | 11 | Inventarios y orquestación | Terminada |
-| 12 | Frontend | Terminada, salvo el deploy a Vercel |
+| 12 | Frontend | Terminada |
 | 13 | Documento de arquitectura | Terminada |
-| 14 | Entrega | En curso: faltan el deploy, el video y las invitaciones |
+| 14 | Entrega | En curso: faltan el video y las invitaciones |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
 el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime,
@@ -563,7 +563,9 @@ El agente queda como `user`, en `draft` y en la versión 1. Ya se puede ejecutar
 descripción. Si algo falla, no queda nada creado.
 
 El embedding se registra como un run de origen `builder`. Por eso un agente nuevo ya tiene un run y
-su costo en `GET /agents/{id}/metrics`; usa `?origin=playground` para ver solo otros orígenes.
+su costo en `GET /agents/{id}/metrics`; usa `?origin=playground` para ver solo otros orígenes. Ese run se
+abre después de la llamada, porque debe referenciar al agente, así que `start_run` recibe el tiempo ya transcurrido
+para que su duración la incluya.
 
 ### Editar un agente y volver atrás
 
@@ -1227,8 +1229,8 @@ serverless a las corridas largas de evals.
 
 ### Desplegar
 
-**El deploy a Vercel todavía no se hizo**, porque requiere iniciar sesión en la cuenta. La tarea 12.1 sigue abierta
-por eso. Tampoco se probó el frontend contra un backend desplegado; esa revisión es de la fase 14.
+El frontend está en Vercel, en el proyecto `bia-agent-platform-frontend`, conectado a este repo: cada push a `main` lo
+despliega. Para repetir la configuración desde cero:
 
 1. Importa el repo en Vercel como un proyecto nuevo, con Root Directory `frontend/`.
 2. Define `NEXT_PUBLIC_API_URL` con la URL del backend. Se fija al compilar, así que cambiarla exige otro deploy.
@@ -1316,8 +1318,8 @@ revisaron renderizados en GitHub, porque esta rama no se ha subido.
 
 | Tarea | Estado | Qué falta |
 |---|---|---|
-| 14.1 README | Hecho, salvo las URLs | Agregar las URLs a la sección "Entrega" |
-| 14.2 Revisión de deploy | Pendiente | Requiere las cuentas de Vercel y de Supabase |
+| 14.1 README | Hecho | — |
+| 14.2 Revisión de deploy | Hecho | — |
 | 14.3 Guion del video | Hecho | — |
 | 14.4 Grabar el video | Pendiente | Grabarlo con [el guion](docs/VIDEO_SCRIPT.md) y subirlo |
 | 14.5 Invitaciones | Pendiente | Las debe enviar quien administra el repo privado |
@@ -1330,8 +1332,16 @@ revisaron renderizados en GitHub, porque esta rama no se ha subido.
    `runs.error` de la fase 5, ya se aplicó.
 3. **Frontend:** sigue los pasos de "Desplegar" de la guía de la fase 12, incluido `CORS_ALLOWED_ORIGINS`.
 4. **Flujo completo:** entra con la contraseña y recorre los inventarios, un chequeo de duplicados y una pregunta en el playground.
-5. **Evals:** corre una corrida contra el backend desplegado. Es la prueba pendiente del límite de tiempo: los 12 casos tardaron
-   3 min 31 s en local (ver fases 9 y 10).
+5. **Evals:** corre una corrida contra el backend desplegado.
+
+### Resultado en el despliegue
+
+El 2026-11-01 se creó el agente `Resumen de reuniones` (`d92f57f6-50f4-4661-a843-5de028f3d726`) en producción y se publicó su
+versión 2. La corrida de evals pasó por Vercel: 12 de 12 casos en 58 s. Este agente no usa herramientas, así que **no prueba el
+peor caso**: los 12 casos de facturación tardaron 3 min 31 s en local y no se han corrido en el despliegue.
+
+El agente queda en la base, porque no hay forma de borrarlo por API. Por eso sus runs ya no coinciden con las cifras de
+[ARCHITECTURE.md](docs/ARCHITECTURE.md), que siguen fechadas el 2026-11-01.
 
 ### Enviar las invitaciones
 

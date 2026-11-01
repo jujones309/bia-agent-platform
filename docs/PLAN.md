@@ -193,7 +193,7 @@ Objetivo: la vista de conjunto que hoy le falta a Bia.
 
 Objetivo: lo justo para que la demo se vea como producto. Se recorta primero.
 
-- [ ] **12.1 Setup** — Next.js + TypeScript + Tailwind en `frontend/` y deploy vacío a Vercel. *Pendiente solo el deploy:* requiere iniciar sesión en Vercel (ver la guía de la fase 12 en el `README.md`).
+- [x] **12.1 Setup** — Next.js + TypeScript + Tailwind en `frontend/` y deploy vacío a Vercel.
 - [x] **12.2 Cliente de API** — Un módulo único con tipos espejo de los artifacts y la URL del backend por variable de entorno. Configurar CORS en FastAPI.
 - [x] **12.3 Layout** — Sidebar con Agentes, Modelos, Orquestación, Builder y Runs.
 - [x] **12.4 Inventario de agentes** — Tabla con estado, modelo, costo y runs.
@@ -220,8 +220,8 @@ Objetivo: `docs/ARCHITECTURE.md`, con las 6 preguntas como índice. Ir anotando 
 
 ## Fase 14 — Entrega
 
-- [ ] **14.1 README** — Qué es, cómo correrlo localmente, URLs desplegadas y enlace al documento de arquitectura. *Pendiente solo las URLs:* dependen de 14.2.
-- [ ] **14.2 Revisión de deploy** — Backend y frontend en Vercel con datos sembrados. Probar el flujo completo en producción.
+- [x] **14.1 README** — Qué es, cómo correrlo localmente, URLs desplegadas y enlace al documento de arquitectura.
+- [x] **14.2 Revisión de deploy** — Backend y frontend en Vercel con datos sembrados. Probar el flujo completo en producción. *Evals corridos contra el backend desplegado: 12 casos en 58 s, con un agente sin herramientas; los 12 casos de facturación no se han corrido ahí.*
 - [x] **14.3 Guion del video** — 3-5 minutos: problema, arquitectura (diagrama), Builder creando el asistente, duplicado detectado, playground con traza e inventarios.
 - [ ] **14.4 Grabar video** — Grabar y subir. Enlazarlo en el README.
 - [ ] **14.5 Invitaciones** — Invitar a `diegogarsfe`, `tatianatorobia` y `juan.otavo@bia.app` (por correo). Verificar que las invitaciones salieron.
