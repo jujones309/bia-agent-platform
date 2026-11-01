@@ -39,14 +39,16 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | 9 | Evals y publicación | Terminada |
 | 10 | Caso real end-to-end | Terminada |
 | 11 | Inventarios y orquestación | Terminada |
-| 12-14 | Frontend, documento y entrega | Pendientes |
+| 12 | Frontend | Terminada, salvo el deploy a Vercel |
+| 13-14 | Documento y entrega | Pendientes |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
 el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime,
 el registro de agentes, las bases de conocimiento con búsqueda citable, el Agent Builder, que detecta
 duplicados y propone la spec, y los evals con su gate de publicación. Ya funciona toda la lista
 anterior por API, el asistente de facturación ya se creó y publicó a través de la plataforma, y los
-inventarios muestran agentes, modelos, flujos y costos en una sola vista. Falta el frontend. El detalle está en [docs/PLAN.md](docs/PLAN.md).
+inventarios muestran agentes, modelos, flujos y costos en una sola vista. El frontend permite hacer todo
+el flujo desde el navegador, en local; todavía no está desplegado. El detalle está en [docs/PLAN.md](docs/PLAN.md).
 
 ## Stack
 
@@ -54,7 +56,7 @@ inventarios muestran agentes, modelos, flujos y costos en una sola vista. Falta 
 - **Base de datos:** Supabase (Postgres con pgvector).
 - **LLM:** OpenAI, siempre a través de la abstracción `ModelProvider`.
 - **Orquestación y trazas:** loop de tool-calling y tablas `runs` / `run_steps` propios.
-- **Frontend:** Next.js, en la fase final. Hasta entonces, las demos se hacen en Swagger.
+- **Frontend:** Next.js con TypeScript y Tailwind.
 
 ## Estructura
 
@@ -62,7 +64,8 @@ inventarios muestran agentes, modelos, flujos y costos en una sola vista. Falta 
 backend/bia/     Paquete Python, organizado por verticales (agents, builder, runtime, rag...)
 backend/tests/   Pruebas; replica la estructura de bia/
 docs/            Plan y modelo de datos
-frontend/        Next.js, fase final
+frontend/src/    Next.js: páginas, componentes y un único cliente de la API
+frontend/tests/  Pruebas; replica la estructura de src/
 ```
 
 Las convenciones de código están en [CLAUDE.md](CLAUDE.md).
@@ -91,6 +94,7 @@ Completa `.env`. Cada variable está explicada en [.env.example](backend/.env.ex
 | `API_ACCESS_PASSWORD` | Sí | Contraseña compartida de la API; mínimo 16 caracteres. |
 | `ENVIRONMENT` | Sí | `development`, `test` o `production`. |
 | `LOG_LEVEL` | No | Por defecto `INFO`. |
+| `CORS_ALLOWED_ORIGINS` | No | Lista JSON de los orígenes del frontend. Por defecto `["http://localhost:3000"]`. |
 
 Si falta una variable o no es válida, la app no arranca y el error dice cuál corregir.
 
@@ -114,7 +118,8 @@ uv run pytest
 uv run ruff check .
 ```
 
-CI corre estos dos comandos en cada push ([ci.yml](.github/workflows/ci.yml)).
+CI corre estos dos comandos en cada push, además de las revisiones del frontend (ver fase 12)
+([ci.yml](.github/workflows/ci.yml)).
 
 ### Agregar una dependencia
 
@@ -415,6 +420,7 @@ curl -u demo:$API_ACCESS_PASSWORD "localhost:8000/agents/<id>/metrics?origin=pro
 | Endpoint | Qué devuelve |
 |---|---|
 | `GET /runs` | Los runs más recientes con sus pasos. `agent_id` es opcional; `limit` va de 1 a 200 (50 por defecto). |
+| `GET /runs/{id}` | Un run con sus pasos. Responde 404 si no existe. |
 | `GET /agents/{id}/metrics` | `total_runs`, `total_cost`, `latency_p50_ms` y `error_rate` (de 0 a 1). Responde 404 si el agente no existe. |
 
 Por defecto, las métricas incluyen runs de todos los orígenes, también evals y playground; con
@@ -1147,4 +1153,119 @@ de flujos usan Postgres, así que requieren `INTEGRATION_DATABASE_URL` (ver la b
 
 ```bash
 INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/inventory tests/orchestrations
+```
+
+---
+
+## Guía: fase 12 — Frontend
+
+No hay migración de tablas. El backend agrega `CORS_ALLOWED_ORIGINS` y `GET /runs/{id}`, que necesita el enlace
+del playground a su traza.
+
+### Correrlo en local
+
+Necesitas Node 24. Con el backend corriendo en el puerto 8000:
+
+```bash
+cd frontend
+npm ci
+cp .env.example .env.local
+npm run dev
+```
+
+Abre `http://localhost:3000` y entra con la contraseña `API_ACCESS_PASSWORD`. El backend ya acepta ese origen sin
+configurar nada. Usa exactamente `localhost`: con `127.0.0.1` el navegador lo bloquea y la pantalla dice "No se
+pudo conectar con el backend".
+
+| Comando | Para qué sirve |
+|---|---|
+| `npm test` | Pruebas con Vitest. No necesitan backend. |
+| `npm run lint` | ESLint, que prohíbe `console` fuera de [logger.ts](frontend/src/lib/logger.ts). |
+| `npx tsc --noEmit` | Revisión de tipos. |
+| `npm run build` | Build de producción. |
+
+CI corre los cuatro en cada push.
+
+### Qué hace cada página
+
+| Página | Qué permite |
+|---|---|
+| `/agents` | Ver estado, modelo, runs y costo de cada agente. "Probar" abre el playground y "Continuar" retoma un agente en `draft` o `testing`. |
+| `/models` | Ver el catálogo con su adopción y consumo. |
+| `/orchestrations` | Ver cada flujo con sus pasos en orden. |
+| `/builder` | Describir la necesidad, confirmar si un agente existente sirve y, si no, proponer uno. |
+| `/builder/{id}` | Ajustar la spec junto a la justificación del diseñador, generar casos, correr evals y publicar. |
+| `/agents/{id}/playground` | Hablar con un agente y abrir la traza de cada respuesta. |
+| `/runs` y `/runs/{id}` | Ver los 50 runs más recientes, filtrar por agente y abrir los pasos de cada uno. |
+
+### Cómo se conecta con el backend
+
+El navegador llama directo al backend, en la URL de `NEXT_PUBLIC_API_URL`; por eso hace falta CORS. Toda llamada
+pasa por [client.ts](frontend/src/lib/api/client.ts), con los tipos espejo de los artifacts en
+[types.ts](frontend/src/lib/api/types.ts). Si un enum o un contrato cambia en el backend, actualízalo ahí.
+
+La contraseña no forma parte del build: cada persona la escribe y queda en `sessionStorage`, hasta cerrar la
+pestaña o pulsar "Salir". Si el backend responde 401, la sesión se cierra y vuelve a aparecer el formulario.
+
+Se descartó un proxy en Next.js porque guardaría la contraseña en el servidor y dejaría la API abierta a quien
+visite el sitio, salvo que se le agregara otra protección. También sumaría el límite de tiempo de otra función
+serverless a las corridas largas de evals.
+
+### Desplegar
+
+**El deploy a Vercel todavía no se hizo**, porque requiere iniciar sesión en la cuenta. La tarea 12.1 sigue abierta
+por eso. Tampoco se probó el frontend contra un backend desplegado; esa revisión es de la fase 14.
+
+1. Importa el repo en Vercel como un proyecto nuevo, con Root Directory `frontend/`.
+2. Define `NEXT_PUBLIC_API_URL` con la URL del backend. Se fija al compilar, así que cambiarla exige otro deploy.
+3. En el proyecto del backend, define `CORS_ALLOWED_ORIGINS` con el origen exacto del frontend, sin `/` final:
+   `["https://<frontend>.vercel.app"]`. Sin esto, el login dice "No se pudo conectar con el backend". Los deploys
+   de preview tienen otra URL y quedan bloqueados, salvo que la agregues a la lista.
+
+### Resultado de la prueba
+
+Se recorrió todo el flujo con un navegador automatizado, sobre el build de producción, el backend local, OpenAI de
+verdad y una base Postgres desechable en Docker, así que **nada de esto quedó en la base de `.env`**. Costó unos
+USD 0,028.
+
+| Paso | Resultado |
+|---|---|
+| Contraseña incorrecta y correcta | Rechazada con su mensaje, y luego acepta |
+| Chequear una necesidad nueva | `not_exists` en 2 s |
+| Proponer | Agente `draft` en 10 s; la página de revisión sobrevive a una recarga |
+| Editar `max_iterations` y guardar | Versión 2 |
+| Generar casos | 10 casos en 24 s |
+| Correr evals | 10 de 10 en 40 s; "Publicar" estaba deshabilitado hasta entonces |
+| Publicar y preguntar por el cliente 100002 | 96.300 COP, con enlace a su traza |
+| Abrir la traza | 3 pasos: modelo, `consultar_factura` y modelo |
+| Pedir un duplicado | Tarjeta "¿Es este agente?" |
+| Ancho de teléfono (390 px) | Sin desborde horizontal; las tablas se desplazan por dentro |
+
+### Limitaciones actuales
+
+- **El playground no tiene memoria.** Cada mensaje es un run independiente, porque `POST /agents/{id}/run` recibe
+  una sola entrada. La página lo dice. Recargarla borra la conversación, no sus trazas.
+- **No se pueden agregar casos manuales desde la interfaz.** El endpoint existe (ver fase 9). Como el generador
+  inventa clientes, ninguno de los 10 casos de la prueba cubrió una consulta exitosa: terminaron en "no encontrado", en una aclaración o en un rechazo.
+- **La base de conocimiento no se puede cambiar en el formulario**, porque ningún endpoint lista las bases. Se
+  muestra su identificador. Tampoco hay pantalla para crear bases o ingerir documentos: sigue siendo por API.
+- **Sin pantalla para volver a una versión anterior ni para ver métricas**, aunque los endpoints existen.
+- **Una corrida de evals es una sola petición.** Si recargas la página durante una, el backend sigue pero la pantalla no
+  lo muestra; revisa el resultado después. Sigue aplicando el límite de tiempo de la plataforma (ver fases 9 y 10).
+- **La justificación se muestra como la guarda el backend**, con claves en inglés (`model:`, `tools:`).
+- **Los mensajes de error del backend llegan en inglés**, tal cual.
+- **La contraseña en `sessionStorage` es legible por cualquier script de la página.** Basta para una contraseña
+  compartida de uso interno, sin scripts de terceros; con usuarios reales debería reemplazarse.
+
+### Pruebas de esta fase
+
+Corren en cada `npm test`, con el cliente de la API simulado. Las páginas de `src/app/` solo delegan en un componente y
+no tienen prueba propia; tampoco `DataTable`, `Badge`, `ErrorNotice`, `MarkdownText`, `logger.ts` y `labels.ts`, ni algunos
+componentes del Builder, del playground y de las trazas, que se cubren desde el componente que los usa. La prueba con navegador no
+quedó en el repo: se hizo una vez y no corre en CI.
+
+`GET /runs/{id}` y CORS se prueban en `tests/api`. La consulta requiere `INTEGRATION_DATABASE_URL`:
+
+```bash
+INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/tracing
 ```

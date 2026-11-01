@@ -193,16 +193,16 @@ Objetivo: la vista de conjunto que hoy le falta a Bia.
 
 Objetivo: lo justo para que la demo se vea como producto. Se recorta primero.
 
-- [ ] **12.1 Setup** — Next.js + TypeScript + Tailwind en `frontend/` y deploy vacío a Vercel.
-- [ ] **12.2 Cliente de API** — Un módulo único con tipos espejo de los artifacts y la URL del backend por variable de entorno. Configurar CORS en FastAPI.
-- [ ] **12.3 Layout** — Sidebar con Agentes, Modelos, Orquestación, Builder y Runs.
-- [ ] **12.4 Inventario de agentes** — Tabla con estado, modelo, costo y runs.
-- [ ] **12.5 Inventario de modelos y orquestación** — Tablas simples; los pasos de orquestación como lista ordenada.
-- [ ] **12.6 Builder: paso 1** — Textarea con la descripción, llamada a `check` y tarjeta "¿Es este agente?" cuando hay candidato.
-- [ ] **12.7 Builder: paso 2** — Muestra la spec propuesta en un formulario editable con la justificación del modelo.
-- [ ] **12.8 Builder: paso 3** — Corre evals, muestra resultados por caso y habilita el botón de publicar.
-- [ ] **12.9 Playground** — Chat contra un agente, con la respuesta y un enlace a su traza.
-- [ ] **12.10 Vista de traza** — Pasos del run con tipo, modelo, tokens, costo y latencia.
+- [ ] **12.1 Setup** — Next.js + TypeScript + Tailwind en `frontend/` y deploy vacío a Vercel. *Pendiente solo el deploy:* requiere iniciar sesión en Vercel (ver la guía de la fase 12 en el `README.md`).
+- [x] **12.2 Cliente de API** — Un módulo único con tipos espejo de los artifacts y la URL del backend por variable de entorno. Configurar CORS en FastAPI.
+- [x] **12.3 Layout** — Sidebar con Agentes, Modelos, Orquestación, Builder y Runs.
+- [x] **12.4 Inventario de agentes** — Tabla con estado, modelo, costo y runs.
+- [x] **12.5 Inventario de modelos y orquestación** — Tablas simples; los pasos de orquestación como lista ordenada.
+- [x] **12.6 Builder: paso 1** — Textarea con la descripción, llamada a `check` y tarjeta "¿Es este agente?" cuando hay candidato.
+- [x] **12.7 Builder: paso 2** — Muestra la spec propuesta en un formulario editable con la justificación del modelo.
+- [x] **12.8 Builder: paso 3** — Corre evals, muestra resultados por caso y habilita el botón de publicar.
+- [x] **12.9 Playground** — Chat contra un agente, con la respuesta y un enlace a su traza.
+- [x] **12.10 Vista de traza** — Pasos del run con tipo, modelo, tokens, costo y latencia.
 
 ## Fase 13 — Documento de arquitectura
 
