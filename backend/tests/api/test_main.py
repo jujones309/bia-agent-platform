@@ -16,6 +16,48 @@ def test_health_reports_ok_status() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_browser_preflight_from_the_frontend_is_allowed_without_credentials() -> None:
+    """Verifies the preflight reaches an answer, since a browser never sends credentials on it."""
+    response = TestClient(app).options(
+        "/agents",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "authorization" in response.headers["access-control-allow-headers"].lower()
+
+
+def test_preflight_from_an_unknown_site_is_not_allowed() -> None:
+    """Verifies another site cannot call the API from a visitor's browser."""
+    response = TestClient(app).options(
+        "/agents",
+        headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "POST"},
+    )
+
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_rejected_request_stays_readable_by_the_frontend() -> None:
+    """Verifies a wrong password reaches the login form as a 401 and not as a network failure."""
+    response = TestClient(app).get("/agents", headers={"Origin": "http://localhost:3000"})
+
+    assert response.status_code == 401
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_every_route_still_requires_credentials_from_an_allowed_origin() -> None:
+    """Verifies an allowed origin alone grants no access to the API."""
+    response = TestClient(app).post("/agents", headers={"Origin": "http://localhost:3000"})
+
+    assert response.status_code == 401
+
+
 def _replace_database_session(monkeypatch: pytest.MonkeyPatch) -> None:
     """Makes the startup open a placeholder session instead of reaching a database.
 

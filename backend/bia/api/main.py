@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from bia.api import agents as agents_api
 from bia.api import builder as builder_api
@@ -22,6 +23,9 @@ from bia.orchestrations.flows import sync_builder_flow
 from bia.settings.config import LogLevel, get_settings
 
 logger = logging.getLogger(__name__)
+
+_CORS_METHODS = ["GET", "POST", "PATCH"]
+_CORS_HEADERS = ["Authorization", "Content-Type"]
 
 
 def _configure_logging(log_level: LogLevel) -> None:
@@ -89,6 +93,13 @@ def create_app() -> FastAPI:
     application = FastAPI(title="Bia Agent Platform", lifespan=_lifespan)
     application.add_middleware(
         BasicAuthMiddleware, password=settings.api_access_password.get_secret_value()
+    )
+    # Added last so it wraps the authentication: a browser's preflight carries no credentials.
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins,
+        allow_methods=_CORS_METHODS,
+        allow_headers=_CORS_HEADERS,
     )
     application.add_api_route(
         PublicPath.HEALTH, _health, methods=["GET"], response_model=HealthResponse

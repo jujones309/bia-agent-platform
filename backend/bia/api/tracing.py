@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from bia.agents.repository import AgentNotFoundError
 from bia.api.dependencies import get_session
 from bia.tracing.artifacts import AgentMetrics, RunOrigin, RunRecord
-from bia.tracing.repository import get_agent_metrics, list_runs
+from bia.tracing.repository import RunNotFoundError, get_agent_metrics, get_run, list_runs
 
 _DEFAULT_RUNS_LIMIT = 50
 _MAX_RUNS_LIMIT = 200
@@ -35,6 +35,29 @@ def get_runs(
         list[RunRecord]: the matching runs, newest first.
     """
     return list_runs(session, agent_id, limit)
+
+
+@router.get("/runs/{run_id}", response_model=RunRecord)
+def get_run_by_id(run_id: UUID, session: Annotated[Session, Depends(get_session)]) -> RunRecord:
+    """Retrieves one run with its steps.
+
+    Exists so the frontend can link an answer of the playground to its trace; served as
+    `GET /runs/{id}`.
+
+    Args:
+        run_id: The run to look up.
+        session: The session of the request.
+
+    Returns:
+        RunRecord: the run and its steps.
+
+    Raises:
+        HTTPException: A 404 if no run has that identifier.
+    """
+    try:
+        return get_run(session, run_id)
+    except RunNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
 
 @router.get("/agents/{agent_id}/metrics", response_model=AgentMetrics)

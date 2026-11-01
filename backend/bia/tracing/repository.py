@@ -9,6 +9,13 @@ from bia.database.queries import DatabaseTable, SqlOperation, load_sql
 from bia.tracing.artifacts import AgentMetrics, RunOrigin, RunRecord, RunStatus, RunStepRecord
 
 
+class RunNotFoundError(LookupError):
+    """Signals that no run has the requested identifier.
+
+    Exists so the API can answer 404 instead of a server error. Raised by `get_run`.
+    """
+
+
 def list_steps_of_runs(session: Session, run_ids: list[UUID]) -> dict[UUID, list[RunStepRecord]]:
     """Lists the steps of several runs, grouped by run and in execution order.
 
@@ -52,6 +59,31 @@ def list_runs(session: Session, agent_id: UUID | None, limit: int) -> list[RunRe
     ]
     steps_by_run = list_steps_of_runs(session, [run.id for run in runs])
     return [run.model_copy(update={"steps": steps_by_run.get(run.id, [])}) for run in runs]
+
+
+def get_run(session: Session, run_id: UUID) -> RunRecord:
+    """Retrieves one run with its steps.
+
+    Exists so the trace of a concrete answer can be opened directly, without searching the recent
+    runs; used by the runs API.
+
+    Args:
+        session: The open session to read through.
+        run_id: The run to look up.
+
+    Returns:
+        RunRecord: the run, with its steps in execution order.
+
+    Raises:
+        RunNotFoundError: If no run has that identifier.
+    """
+    sql = load_sql(DatabaseTable.RUNS, SqlOperation.GET_BY_ID)
+    row = session.execute(text(sql), {"run_id": str(run_id)}).mappings().one_or_none()
+    if row is None:
+        raise RunNotFoundError(f"There is no run with id {run_id}")
+    run = RunRecord.model_validate(dict(row))
+    steps_by_run = list_steps_of_runs(session, [run.id])
+    return run.model_copy(update={"steps": steps_by_run.get(run.id, [])})
 
 
 def list_succeeded_runs(

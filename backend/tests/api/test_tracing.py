@@ -18,6 +18,7 @@ from bia.tracing.artifacts import (
     RunStepRecord,
     StepType,
 )
+from bia.tracing.repository import RunNotFoundError
 
 
 def _run_with_one_step() -> RunRecord:
@@ -122,6 +123,46 @@ def test_runs_rejects_invalid_filters(
 
     assert api_client.get("/runs", params=params).status_code == 422
     assert calls == []
+
+
+def test_run_by_id_returns_that_run_with_its_steps(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies the trace of an answer opens from its identifier alone."""
+    run = _run_with_one_step()
+    app.dependency_overrides[get_session] = lambda: sentinel.session
+    monkeypatch.setattr(
+        tracing_router, "get_run", lambda _session, run_id: run if run_id == run.id else None
+    )
+
+    response = api_client.get(f"/runs/{run.id}")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == str(run.id)
+    assert response.json()["steps"][0]["latency_ms"] == 4
+
+
+def test_run_by_id_answers_404_when_it_does_not_exist(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies a stale link gets a clear error and not a server failure."""
+    app.dependency_overrides[get_session] = lambda: sentinel.session
+    monkeypatch.setattr(tracing_router, "get_run", _raise_run_not_found)
+
+    assert api_client.get(f"/runs/{uuid4()}").status_code == 404
+
+
+def _raise_run_not_found(_session: object, run_id: UUID) -> RunRecord:
+    """Simulates a read of a run that does not exist.
+
+    Args:
+        _session: The session the read would have used.
+        run_id: The identifier that was looked up.
+
+    Returns:
+        RunRecord: it never returns; it always raises.
+    """
+    raise RunNotFoundError(f"There is no run with id {run_id}")
 
 
 def test_metrics_returns_the_aggregates_of_the_requested_agent(

@@ -6,6 +6,7 @@ from pydantic import Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+_LOCAL_FRONTEND_ORIGIN = "http://localhost:3000"
 
 
 class Environment(StrEnum):
@@ -56,6 +57,7 @@ class Settings(BaseSettings):
     api_access_password: SecretStr = Field(min_length=16)
     environment: Environment
     log_level: LogLevel = LogLevel.INFO
+    cors_allowed_origins: list[str] = [_LOCAL_FRONTEND_ORIGIN]  # JSON list in the environment
 
 
 def _describe_validation_error(error: ValidationError) -> str:

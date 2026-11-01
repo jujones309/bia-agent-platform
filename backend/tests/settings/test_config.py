@@ -37,6 +37,20 @@ def test_log_level_defaults_to_info(monkeypatch: pytest.MonkeyPatch) -> None:
     assert load_settings().log_level is LogLevel.INFO
 
 
+def test_cors_origins_default_to_the_local_frontend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies local development works, and no other site is trusted, without configuring it."""
+    monkeypatch.delenv("CORS_ALLOWED_ORIGINS", raising=False)
+
+    assert load_settings().cors_allowed_origins == ["http://localhost:3000"]
+
+
+def test_cors_origins_are_read_as_a_json_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies a deploy can name its frontend through the environment."""
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", '["https://bia.example"]')
+
+    assert load_settings().cors_allowed_origins == ["https://bia.example"]
+
+
 @pytest.mark.parametrize(
     "variable", ["OPENAI_API_KEY", "DATABASE_URL", "API_ACCESS_PASSWORD", "ENVIRONMENT"]
 )

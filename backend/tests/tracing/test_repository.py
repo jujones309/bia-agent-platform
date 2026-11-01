@@ -8,7 +8,7 @@ from bia.agents.repository import AgentNotFoundError
 from bia.database.connection import database_session
 from bia.tracing.artifacts import RunOrigin, RunStatus, RunStepDraft, StepType
 from bia.tracing.recorder import RunRecorder
-from bia.tracing.repository import get_agent_metrics, list_runs
+from bia.tracing.repository import RunNotFoundError, get_agent_metrics, get_run, list_runs
 from tests.tracing.seed import insert_agent, insert_agent_version, insert_finished_run
 
 
@@ -37,6 +37,29 @@ def _tool_step(marker: str) -> RunStepDraft:
     return RunStepDraft(
         step_type=StepType.TOOL_CALL, input={"marker": marker}, output={}, latency_ms=1
     )
+
+
+def test_get_run_returns_only_that_run_with_its_steps_in_order(connection: Connection) -> None:
+    """Verifies a trace link opens the run it points at, with its own steps."""
+    recorder = RunRecorder(connection)
+    agent_id, version_id = _new_agent(connection)
+    run = recorder.start_run(agent_id, version_id, RunOrigin.PLAYGROUND, "mine")
+    other = recorder.start_run(agent_id, version_id, RunOrigin.PLAYGROUND, "other")
+    recorder.add_step(run.id, _tool_step("first"))
+    recorder.add_step(run.id, _tool_step("second"))
+    recorder.add_step(other.id, _tool_step("foreign"))
+
+    with database_session(connection) as session:
+        found = get_run(session, run.id)
+
+    assert found.input == "mine"
+    assert [step.input for step in found.steps] == [{"marker": "first"}, {"marker": "second"}]
+
+
+def test_get_run_of_an_unknown_id_fails_clearly(connection: Connection) -> None:
+    """Verifies a missing run is an explicit error and not an empty trace."""
+    with database_session(connection) as session, pytest.raises(RunNotFoundError):
+        get_run(session, uuid4())
 
 
 def test_list_filters_by_agent_and_attaches_each_run_its_own_steps(connection: Connection) -> None:
