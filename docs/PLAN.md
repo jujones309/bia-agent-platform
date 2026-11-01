@@ -100,11 +100,11 @@ Objetivo: los inventarios de modelos y herramientas, curados y consultables.
 
 Objetivo: todo lo que hace un agente queda registrado.
 
-- [ ] **4.1 Artifacts** — `RunRecord`, `RunStepRecord` y el enum `StepType` (`llm_call`, `tool_call`, `retrieval`).
-- [ ] **4.2 Recorder** — `RunRecorder`: `start_run`, `add_step` y `finish_run`, que suma tokens y costo de los pasos. Con test usando la base.
-- [ ] **4.3 API de runs** — `GET /runs?agent_id=`, que devuelve el run con sus pasos.
-- [ ] **4.4 Métricas por agente** — Query que agrega runs, costo total, latencia p50 y tasa de error por agente.
-- [ ] **4.5 API de métricas** — `GET /agents/{id}/metrics`.
+- [x] **4.1 Artifacts** — `RunRecord`, `RunStepRecord` y el enum `StepType` (`llm_call`, `tool_call`, `retrieval`).
+- [x] **4.2 Recorder** — `RunRecorder`: `start_run`, `add_step` y `finish_run`, que suma tokens y costo de los pasos. Con test usando la base.
+- [x] **4.3 API de runs** — `GET /runs?agent_id=`, que devuelve el run con sus pasos.
+- [x] **4.4 Métricas por agente** — Query que agrega runs, costo total, latencia p50 y tasa de error por agente.
+- [x] **4.5 API de métricas** — `GET /agents/{id}/metrics`.
 
 ## Fase 5 — Runtime de agentes
 

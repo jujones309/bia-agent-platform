@@ -139,10 +139,10 @@ Una ejecución completa de un agente.
 | `id` | `uuid` | Identificador del run. |
 | `agent_id` | `uuid` → `agents` | Agente ejecutado. |
 | `agent_version_id` | `uuid` → `agent_versions` | Versión exacta ejecutada. |
-| `origin` | `text` | Quién lo disparó. Propuesto: `playground`, `eval`, `builder`, `production`. |
+| `origin` | `text` | Quién lo disparó. Cerrado: `playground`, `eval`, `builder`, `production`. |
 | `input` | `text` | Entrada recibida. |
 | `output` | `text` | Respuesta final; nula mientras corre o si falló. |
-| `status` | `text` | Estado. Propuesto: `running`, `succeeded`, `failed`. |
+| `status` | `text` | Estado. Cerrado: `running`, `succeeded`, `failed`. |
 | `total_tokens` | `integer` | Suma de los tokens de sus pasos. |
 | `total_cost` | `numeric(14,8)` | Suma en USD del costo de sus pasos. |
 | `latency_ms` | `integer` | Duración total; nula hasta terminar. |

@@ -31,11 +31,12 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | 1 | Modelo de datos y base | Terminada |
 | 2 | Provider de modelos | Terminada |
 | 3 | Catálogos (modelos y herramientas) | Terminada |
-| 4-14 | Trazas, runtime, Builder, frontend y entrega | Pendientes |
+| 4 | Trazas | Terminada |
+| 5-14 | Runtime, Builder, frontend y entrega | Pendientes |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
-el provider de modelos y los catálogos de modelos y herramientas. El Builder y el runtime todavía
-no están construidos. El detalle está en
+el provider de modelos, los catálogos de modelos y herramientas y el registro de trazas. El Builder
+y el runtime todavía no están construidos, así que nada genera runs por sí solo. El detalle está en
 [docs/PLAN.md](docs/PLAN.md).
 
 ## Stack
@@ -342,4 +343,85 @@ de una transacción que se revierte al final, y no dejan nada en esa base:
 
 ```bash
 INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/catalog/tools/test_repository.py
+```
+
+---
+
+## Guía: fase 4 — Trazas
+
+Cada ejecución queda en `runs` y cada uno de sus pasos en `run_steps`. El runtime todavía no existe:
+hasta la fase 5, los runs solo aparecen si alguien usa `RunRecorder` directamente.
+
+### Registrar un run
+
+```python
+from bia.database.connection import get_engine
+from bia.tracing.artifacts import RunOrigin, RunStepDraft, StepType
+from bia.tracing.recorder import RunRecorder
+
+recorder = RunRecorder(get_engine())
+run = recorder.start_run(agent_id, agent_version_id, RunOrigin.PLAYGROUND, "¿Cuál es mi saldo?")
+recorder.add_step(
+    run.id,
+    RunStepDraft(
+        step_type=StepType.LLM_CALL,
+        model_id=catalog_model.id,
+        input=[{"role": "user", "content": "¿Cuál es mi saldo?"}],
+        output="Tu saldo es 100",
+        input_tokens=result.usage.input_tokens,
+        output_tokens=result.usage.output_tokens,
+        cost=compute_cost(result.usage, catalog_model),
+        latency_ms=result.latency_ms,
+    ),
+)
+recorder.finish_run(run.id, "Tu saldo es 100")
+```
+
+Reglas que conviene conocer:
+
+- **Cada escritura hace su propio commit**, separado de la transacción de quien llama. Así, si la
+  ejecución se cae, lo ya registrado no se pierde.
+- **`finish_run(run_id, None)` marca el run como `failed`**; con un texto, como `succeeded`. Hay que
+  llamarlo también cuando la ejecución falla: de lo contrario, el run queda en `running`.
+- **Los totales salen de los pasos**: `finish_run` suma tokens y costo en la base, y también
+  mide la latencia total. Un run fallido conserva lo que alcanzó a gastar.
+- **Un run cerrado no cambia**: escribir en él, o en un id inexistente, lanza `RunNotRunningError`.
+- **Un paso tiene `output` o `error`, nunca ambos ni ninguno**, y un `llm_call` exige `model_id`.
+- **Los pasos de un run se agregan de a uno.** Dos `add_step` simultáneos sobre el mismo run pueden
+  chocar por la posición, y uno falla con error de la base.
+
+### Consultar trazas y métricas
+
+```bash
+curl -u demo:$API_ACCESS_PASSWORD "localhost:8000/runs?agent_id=<id>&limit=20"
+curl -u demo:$API_ACCESS_PASSWORD localhost:8000/agents/<id>/metrics
+```
+
+| Endpoint | Qué devuelve |
+|---|---|
+| `GET /runs` | Los runs más recientes con sus pasos. `agent_id` es opcional; `limit` va de 1 a 200 (50 por defecto). |
+| `GET /agents/{id}/metrics` | `total_runs`, `total_cost`, `latency_p50_ms` y `error_rate` (de 0 a 1). Responde 404 si el agente no existe. |
+
+Las métricas incluyen runs de todos los orígenes, también evals y playground. El p50 y la tasa de
+error solo consideran runs terminados, y son `null` si todavía no hay ninguno. Los importes llegan
+como strings decimales; un cero puede verse como `0E-8`.
+
+### Pruebas de esta fase
+
+Las consultas usan funciones de Postgres, así que las del recorder y el repositorio solo corren con
+`INTEGRATION_DATABASE_URL`, y por lo tanto no corren en CI. La base necesita la extensión `vector`.
+Todo se revierte al final y no deja filas:
+
+```bash
+INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/tracing
+```
+
+Para no usar Supabase, sirve una base desechable:
+
+```bash
+docker run -d --rm --name bia-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=bia_test \
+  -p 55432:5432 pgvector/pgvector:pg17
+docker exec bia-pg psql -U postgres -d bia_test -c 'CREATE EXTENSION vector'
+INTEGRATION_DATABASE_URL="postgresql://postgres:test@localhost:55432/bia_test" uv run pytest
+docker rm -f bia-pg
 ```
