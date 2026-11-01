@@ -37,6 +37,8 @@ class SqlOperation(StrEnum):
 
     TABLE = "table"  # the table's schema DDL
     SEED = "seed"  # the table's idempotent initial rows
+    LIST = "list"
+    GET_BY_ID = "get_by_id"
 
 
 class SqlFileNotFoundError(FileNotFoundError):
