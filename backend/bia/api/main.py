@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from bia.api.artifacts import HealthResponse, HealthStatus
 from bia.api.auth import BasicAuthMiddleware, PublicPath
+from bia.api.catalog import models as catalog_models
 from bia.settings.config import LogLevel, get_settings
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     application.add_api_route(
         PublicPath.HEALTH, _health, methods=["GET"], response_model=HealthResponse
     )
+    application.include_router(catalog_models.router)
     logger.info("Application started in %s environment", settings.environment.value)
     return application
 
