@@ -2,11 +2,11 @@ from collections.abc import Iterator
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import Connection, Engine
+from sqlalchemy import Connection, Engine, Uuid, column, func, select, table
 
 from bia.agents import registry as registry_module
 from bia.agents.artifacts import AgentDraft, AgentSpec, AgentSpecPatch, AgentStatus
-from bia.agents.registry import activate_version, add_version, create_agent
+from bia.agents.registry import activate_version, add_version, archive_agent, create_agent
 from bia.agents.repository import AgentNotFoundError, get_agent
 from bia.builder import system_run
 from bia.builder.duplicates.search import find_candidates
@@ -35,6 +35,7 @@ from bia.evals.cases import (
     NoUsableCasesError,
     add_manual_case,
     generate_cases,
+    remove_case,
 )
 from bia.evals.gate import (
     AgentNotEvaluableError,
@@ -44,7 +45,7 @@ from bia.evals.gate import (
     publish_agent,
 )
 from bia.evals.monitoring import monitor_agent
-from bia.evals.repository import list_cases
+from bia.evals.repository import EvalCaseNotFoundError, list_cases
 from bia.evals.runner import NoEvalCasesError, run_evals
 from bia.inventory.repository import list_orchestration_inventory
 from bia.providers.base import ProviderError
@@ -55,6 +56,7 @@ from tests.builder.duplicates.seed import hide_published_agents
 from tests.providers.fake import FakeModelProvider
 
 _EMBEDDING_DIMENSIONS = 1536
+_RESULTS = table("eval_results", column("eval_case_id", Uuid))
 _PASS = EvalJudgement(verdict=EvalVerdict.PASS, score=90, reason="Cumple")
 _FAIL = EvalJudgement(verdict=EvalVerdict.FAIL, score=10, reason="Inventó el saldo")
 
@@ -520,3 +522,106 @@ def test_a_rejected_publication_registers_no_flow(
     with database_session(connection) as session:
         flows = list_orchestration_inventory(session)
     assert agent_id not in [step.agent_id for flow in flows for step in flow.steps]
+
+
+def _result_count(connection: Connection, eval_case_id: UUID) -> int:
+    """Counts the stored results of a case.
+
+    Args:
+        connection: The connection of the test's transaction.
+        eval_case_id: The case to look up.
+
+    Returns:
+        int: how many results it has.
+    """
+    query = (
+        select(func.count()).select_from(_RESULTS).where(_RESULTS.c.eval_case_id == eval_case_id)
+    )
+    return connection.execute(query).scalar_one()
+
+
+def test_a_retired_case_stops_counting_and_keeps_its_results_as_history(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies the report and the gate ignore the case while its audit record survives."""
+    agent_id = _new_agent(connection)
+    _queue_generation(provider)
+    generate_cases(connection, agent_id)
+    _run_with_verdicts(connection, provider, agent_id, passes=9, fails=1)
+    with database_session(connection) as session:
+        report = build_report(session, agent_id)
+    failing = next(o.case.id for o in report.outcomes if o.result.verdict is EvalVerdict.FAIL)
+
+    with database_session(connection) as session:
+        remove_case(session, agent_id, failing)
+        report = build_report(session, agent_id)
+
+    assert failing not in [outcome.case.id for outcome in report.outcomes]
+    assert (report.passed_cases, report.total_cases) == (9, 9)
+    assert _result_count(connection, failing) == 1
+
+
+def test_retiring_cannot_open_the_gate_below_the_minimum_of_cases(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies removing failures does not let an agent publish with too few cases."""
+    agent_id = _new_agent(connection)
+    _queue_generation(provider, count=8)
+    generate_cases(connection, agent_id)
+    _run_with_verdicts(connection, provider, agent_id, passes=7, fails=1)
+    with database_session(connection) as session:
+        report = build_report(session, agent_id)
+    failing = next(o.case.id for o in report.outcomes if o.result.verdict is EvalVerdict.FAIL)
+
+    with database_session(connection) as session:
+        remove_case(session, agent_id, failing)
+        assert build_report(session, agent_id).total_cases == 7
+        with pytest.raises(PublishRejectedError):
+            publish_agent(session, agent_id)
+
+
+def test_retiring_every_generated_case_allows_generating_again(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies a bad generated set can be replaced without SQL."""
+    agent_id = _new_agent(connection)
+    _queue_generation(provider)
+    cases = generate_cases(connection, agent_id)
+    with database_session(connection) as session:
+        for case in cases:
+            remove_case(session, agent_id, case.id)
+
+    _queue_generation(provider)
+    new_cases = generate_cases(connection, agent_id)
+
+    assert {case.id for case in new_cases}.isdisjoint(case.id for case in cases)
+
+
+def test_a_case_cannot_be_retired_through_another_agent_or_twice(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies a wrong path fails clearly instead of touching another agent's tests."""
+    owner_id = _new_agent(connection)
+    other_id = _new_agent(connection)
+    draft = EvalCaseDraft(input="Hola", expected_behavior="Saluda")
+    with database_session(connection) as session:
+        case = add_manual_case(session, owner_id, draft)
+        with pytest.raises(EvalCaseNotFoundError):
+            remove_case(session, other_id, case.id)
+        assert [item.id for item in list_cases(session, owner_id)] == [case.id]
+        remove_case(session, owner_id, case.id)
+        with pytest.raises(EvalCaseNotFoundError):
+            remove_case(session, owner_id, case.id)
+
+
+def test_a_case_of_an_archived_agent_cannot_be_retired(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies an archived agent stays as it was when it left the flow."""
+    agent_id = _new_agent(connection)
+    draft = EvalCaseDraft(input="Hola", expected_behavior="Saluda")
+    with database_session(connection) as session:
+        case = add_manual_case(session, agent_id, draft)
+        archive_agent(session, agent_id)
+        with pytest.raises(AgentNotEvaluableError):
+            remove_case(session, agent_id, case.id)

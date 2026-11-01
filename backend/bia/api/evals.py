@@ -14,6 +14,7 @@ from bia.evals.cases import (
     NoUsableCasesError,
     add_manual_case,
     generate_cases,
+    remove_case,
 )
 from bia.evals.gate import (
     AgentNotEvaluableError,
@@ -23,6 +24,7 @@ from bia.evals.gate import (
 )
 from bia.evals.judge import InvalidEvalJudgementError
 from bia.evals.monitoring import monitor_agent
+from bia.evals.repository import EvalCaseNotFoundError
 from bia.evals.runner import NoEvalCasesError, run_evals
 from bia.providers.base import ProviderError
 from bia.runtime.execution import AgentConfigurationError
@@ -59,6 +61,37 @@ def post_eval_case(
     try:
         return add_manual_case(session, agent_id, draft)
     except AgentNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+    except AgentNotEvaluableError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+
+@router.delete("/eval-cases/{eval_case_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_eval_case(
+    agent_id: UUID,
+    eval_case_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+) -> None:
+    """Retires a test case, keeping its past results as history.
+
+    Exists so a badly written case can be removed without SQL; served as
+    `DELETE /agents/{id}/eval-cases/{case_id}`.
+
+    Args:
+        agent_id: The agent the case belongs to.
+        eval_case_id: The case to retire.
+        session: The session of the request.
+
+    Returns:
+        None: the response has no body.
+
+    Raises:
+        HTTPException: A 404 if the agent or the case does not exist, or a 409 if the agent cannot
+            be evaluated.
+    """
+    try:
+        remove_case(session, agent_id, eval_case_id)
+    except (AgentNotFoundError, EvalCaseNotFoundError) as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
     except AgentNotEvaluableError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error

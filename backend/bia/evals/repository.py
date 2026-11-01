@@ -13,6 +13,14 @@ from bia.evals.artifacts import (
 )
 
 
+class EvalCaseNotFoundError(LookupError):
+    """Signals that an agent has no current case with the requested identifier.
+
+    Exists so retiring a wrong or already retired case fails clearly. Raised by `retire_case` and
+    translated to a 404 by `bia/api/evals.py`.
+    """
+
+
 def insert_case(
     session: Session, agent_id: UUID, draft: EvalCaseDraft, origin: EvalCaseOrigin
 ) -> EvalCase:
@@ -40,9 +48,10 @@ def insert_case(
 
 
 def list_cases(session: Session, agent_id: UUID) -> list[EvalCase]:
-    """Lists the test cases of an agent, oldest first.
+    """Lists the current test cases of an agent, oldest first.
 
-    Exists because every eval run and report covers all of them; used across `bia/evals/`.
+    Exists because every eval run and report covers all of them, and retired ones no longer count;
+    used across `bia/evals/`.
 
     Args:
         session: The open session to read through.
@@ -54,6 +63,29 @@ def list_cases(session: Session, agent_id: UUID) -> list[EvalCase]:
     sql = load_sql(DatabaseTable.EVAL_CASES, SqlOperation.LIST_BY_AGENT)
     rows = session.execute(text(sql), {"agent_id": str(agent_id)}).mappings()
     return [EvalCase.model_validate(dict(row)) for row in rows]
+
+
+def retire_case(session: Session, agent_id: UUID, eval_case_id: UUID) -> None:
+    """Takes a case out of the reports and the gate, keeping its row and its results.
+
+    Exists because the results of a case are the audit record of past decisions of the gate, so the
+    row cannot be deleted; used by `remove_case`.
+
+    Args:
+        session: The open session whose transaction contains the write.
+        agent_id: The agent the case must belong to.
+        eval_case_id: The case to retire.
+
+    Returns:
+        None: the case is retired inside the session's transaction.
+
+    Raises:
+        EvalCaseNotFoundError: If the agent has no current case with that identifier.
+    """
+    parameters = {"agent_id": str(agent_id), "eval_case_id": str(eval_case_id)}
+    sql = load_sql(DatabaseTable.EVAL_CASES, SqlOperation.RETIRE)
+    if session.execute(text(sql), parameters).one_or_none() is None:
+        raise EvalCaseNotFoundError(f"Agent {agent_id} has no current case {eval_case_id}")
 
 
 def insert_result(

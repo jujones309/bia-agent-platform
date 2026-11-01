@@ -18,7 +18,7 @@ from bia.evals.artifacts import (
 )
 from bia.evals.config import EVALS_CONFIG
 from bia.evals.gate import require_evaluable
-from bia.evals.repository import insert_case, list_cases
+from bia.evals.repository import insert_case, list_cases, retire_case
 from bia.runtime.execution import AgentExecution, load_agent_execution
 from bia.tracing.artifacts import RunOrigin
 from bia.tracing.recorder import RunRecorder
@@ -29,8 +29,9 @@ logger = logging.getLogger(__name__)
 class CasesAlreadyGeneratedError(ValueError):
     """Signals that an agent already has generated cases.
 
-    Exists because generating again would pile up cases that cannot be removed, and would pay for
-    them. Raised by `generate_cases` and translated to a 409 by `bia/api/evals.py`.
+    Exists because generating again would pile up cases and pay for them; retiring every generated
+    case allows generating again. Raised by `generate_cases` and translated to a 409 by
+    `bia/api/evals.py`.
     """
 
 
@@ -61,6 +62,31 @@ def add_manual_case(session: Session, agent_id: UUID, draft: EvalCaseDraft) -> E
     """
     require_evaluable(get_agent(session, agent_id))
     return insert_case(session, agent_id, draft, EvalCaseOrigin.MANUAL)
+
+
+def remove_case(session: Session, agent_id: UUID, eval_case_id: UUID) -> None:
+    """Retires a badly written case of an agent.
+
+    Exists because a wrong case counts against the gate forever otherwise; used by the evals API.
+    The lock keeps the removal from slipping in between the check and the change of a publication.
+    The gate's minimum of cases still applies to what remains.
+
+    Args:
+        session: The open session whose transaction contains the write.
+        agent_id: The agent the case belongs to.
+        eval_case_id: The case to retire.
+
+    Returns:
+        None: the case no longer counts.
+
+    Raises:
+        AgentNotFoundError: If no agent has that identifier.
+        AgentNotEvaluableError: If it is a system agent or it was archived.
+        EvalCaseNotFoundError: If the agent has no current case with that identifier.
+    """
+    require_evaluable(lock_agent(session, agent_id))
+    retire_case(session, agent_id, eval_case_id)
+    logger.info("Retired eval case %s of agent %s", eval_case_id, agent_id)
 
 
 def _require_no_generated_cases(session: Session, agent_id: UUID) -> None:

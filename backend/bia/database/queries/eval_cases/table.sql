@@ -12,7 +12,12 @@ CREATE TABLE IF NOT EXISTS eval_cases (
     -- text: how the case was created: generated or manual.
     origin text NOT NULL CHECK (origin IN ('generated', 'manual')),
     -- timestamptz: when the case was created.
-    created_at timestamptz NOT NULL DEFAULT now()
+    created_at timestamptz NOT NULL DEFAULT now(),
+    -- timestamptz: when the case stopped counting for reports and the gate; null while it is in force.
+    retired_at timestamptz
 );
+
+-- Brings databases created before the column existed up to date.
+ALTER TABLE eval_cases ADD COLUMN IF NOT EXISTS retired_at timestamptz;
 
 ALTER TABLE eval_cases ENABLE ROW LEVEL SECURITY;

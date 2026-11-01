@@ -26,6 +26,7 @@ from bia.evals.artifacts import (
 from bia.evals.cases import CasesAlreadyGeneratedError, NoUsableCasesError
 from bia.evals.gate import AgentNotEvaluableError, PublishRejectedError
 from bia.evals.judge import InvalidEvalJudgementError
+from bia.evals.repository import EvalCaseNotFoundError
 from bia.evals.runner import NoEvalCasesError
 from bia.providers.base import ProviderError
 from bia.runtime.execution import AgentConfigurationError
@@ -382,3 +383,44 @@ def test_monitor_translates_failures(
 def test_evals_routes_require_the_shared_password() -> None:
     """Verifies the new routes, which spend money, are protected."""
     assert TestClient(app).post(f"/agents/{_AGENT_ID}/evals/run").status_code == 401
+
+
+def test_delete_case_retires_the_one_in_the_path_and_answers_without_a_body(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies both identifiers reach the rule, since a case only belongs to one agent."""
+    retired = []
+    monkeypatch.setattr(
+        evals_router,
+        "remove_case",
+        lambda _session, agent_id, case_id: retired.append((agent_id, case_id)),
+    )
+    case_id = uuid4()
+
+    response = client.delete(f"/agents/{_AGENT_ID}/eval-cases/{case_id}")
+
+    assert response.status_code == 204
+    assert retired == [(_AGENT_ID, case_id)]
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status"),
+    [
+        (AgentNotFoundError("There is no agent"), 404),
+        (EvalCaseNotFoundError("It has no such case"), 404),
+        (AgentNotEvaluableError("It is archived"), 409),
+    ],
+)
+def test_delete_case_translates_each_failure(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    expected_status: int,
+) -> None:
+    """Verifies each failure reaches the person with its own status and reason."""
+    monkeypatch.setattr(evals_router, "remove_case", _Raiser(error))
+
+    response = client.delete(f"/agents/{_AGENT_ID}/eval-cases/{uuid4()}")
+
+    assert response.status_code == expected_status
+    assert response.json()["detail"] == str(error)
