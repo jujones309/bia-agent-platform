@@ -1,10 +1,15 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from bia.api.artifacts import HealthResponse, HealthStatus
 from bia.api.auth import BasicAuthMiddleware, PublicPath
 from bia.api.catalog import models as catalog_models
+from bia.api.catalog import tools as catalog_tools
+from bia.catalog.tools.sync import sync_tools
+from bia.database.connection import database_session, get_engine
 from bia.settings.config import LogLevel, get_settings
 
 logger = logging.getLogger(__name__)
@@ -40,6 +45,25 @@ def _health() -> HealthResponse:
     return HealthResponse(status=HealthStatus.OK)
 
 
+@asynccontextmanager
+async def _lifespan(_application: FastAPI) -> AsyncIterator[None]:
+    """Syncs the tool catalog before the application starts serving requests.
+
+    Exists so the `tools` table reflects the code of the running deploy. A failure aborts
+    the startup instead of serving a catalog that may not match the code. Registered on
+    the application by `create_app`.
+
+    Args:
+        _application: The application starting up; required by FastAPI's signature.
+
+    Returns:
+        AsyncIterator[None]: yields while the application runs.
+    """
+    with database_session(get_engine()) as session:
+        sync_tools(session)
+    yield
+
+
 def create_app() -> FastAPI:
     """Builds the FastAPI application, validating the configuration first.
 
@@ -51,7 +75,7 @@ def create_app() -> FastAPI:
     """
     settings = get_settings()
     _configure_logging(settings.log_level)
-    application = FastAPI(title="Bia Agent Platform")
+    application = FastAPI(title="Bia Agent Platform", lifespan=_lifespan)
     application.add_middleware(
         BasicAuthMiddleware, password=settings.api_access_password.get_secret_value()
     )
@@ -59,6 +83,7 @@ def create_app() -> FastAPI:
         PublicPath.HEALTH, _health, methods=["GET"], response_model=HealthResponse
     )
     application.include_router(catalog_models.router)
+    application.include_router(catalog_tools.router)
     logger.info("Application started in %s environment", settings.environment.value)
     return application
 
