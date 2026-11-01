@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from bia.api import agents as agents_api
 from bia.api import builder as builder_api
 from bia.api import evals as evals_api
+from bia.api import inventory as inventory_api
 from bia.api import rag as rag_api
 from bia.api import runtime as runtime_api
 from bia.api import tracing as tracing_api
@@ -17,6 +18,7 @@ from bia.api.catalog import tools as catalog_tools
 from bia.builder.system_agents import sync_system_agents
 from bia.catalog.tools.sync import sync_tools
 from bia.database.connection import database_session, get_engine
+from bia.orchestrations.flows import sync_builder_flow
 from bia.settings.config import LogLevel, get_settings
 
 logger = logging.getLogger(__name__)
@@ -54,7 +56,7 @@ def _health() -> HealthResponse:
 
 @asynccontextmanager
 async def _lifespan(_application: FastAPI) -> AsyncIterator[None]:
-    """Syncs the tool catalog and the system agents before the application serves requests.
+    """Syncs the tools, the system agents and their flow before the application serves requests.
 
     Exists so the database reflects the code of the running deploy. A failure aborts the
     startup instead of serving a catalog or a builder that may not match the code. Registered
@@ -69,6 +71,7 @@ async def _lifespan(_application: FastAPI) -> AsyncIterator[None]:
     with database_session(get_engine()) as session:
         sync_tools(session)
         sync_system_agents(session)
+        sync_builder_flow(session)
     yield
 
 
@@ -98,6 +101,7 @@ def create_app() -> FastAPI:
     application.include_router(rag_api.router)
     application.include_router(builder_api.router)
     application.include_router(evals_api.router)
+    application.include_router(inventory_api.router)
     logger.info("Application started in %s environment", settings.environment.value)
     return application
 

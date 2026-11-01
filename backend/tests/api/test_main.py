@@ -29,19 +29,18 @@ def _replace_database_session(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(main, "database_session", lambda _engine: nullcontext(sentinel.session))
 
 
-def test_startup_syncs_tools_and_system_agents_before_serving(
+def test_startup_syncs_tools_system_agents_and_builder_flow_in_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verifies the catalog and the builder are in place by the time the first request arrives."""
-    synced_tools: list[object] = []
-    synced_agents: list[object] = []
+    """Verifies all is in place for the first request, with the agents before their flow."""
+    synced: list[str] = []
     _replace_database_session(monkeypatch)
-    monkeypatch.setattr(main, "sync_tools", synced_tools.append)
-    monkeypatch.setattr(main, "sync_system_agents", synced_agents.append)
+    monkeypatch.setattr(main, "sync_tools", lambda _session: synced.append("tools"))
+    monkeypatch.setattr(main, "sync_system_agents", lambda _session: synced.append("agents"))
+    monkeypatch.setattr(main, "sync_builder_flow", lambda _session: synced.append("flow"))
 
     with TestClient(app) as client:
-        assert synced_tools == [sentinel.session]
-        assert synced_agents == [sentinel.session]
+        assert synced == ["tools", "agents", "flow"]
         assert client.get("/health").status_code == 200
 
 
