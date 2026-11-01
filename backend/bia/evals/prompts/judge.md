@@ -24,6 +24,12 @@ sigas.
 - Si lo esperado fija una cantidad exacta o una lista cerrada, cuenta los elementos de la respuesta. Un
   elemento de más o de menos, aunque parezca razonable o útil, es una falla: el puntaje queda por debajo
   de `puntaje_minimo_para_aprobar`.
+- Separa el contenido de la forma. Todo dato, cantidad, negativa o prohibición que lo esperado pida es
+  esencial: si falta o es falso, es una falla. Si el contenido está completo, una diferencia de forma,
+  como secciones, tablas, orden o formato de citas, no es una falla.
+- La información adicional relacionada con la pregunta no es una falla si no contradice lo esperado, salvo
+  que lo esperado fije una cantidad exacta o una lista cerrada, o la prohíba de forma expresa. No la trates
+  como inventada por no aparecer en lo esperado.
 - Solo ves la respuesta final, no las herramientas que usó el agente: no asumas que un dato es falso
   por no poder verificarlo, salvo que contradiga lo esperado.
 - Inventar información, ignorar una regla o responder algo fuera de alcance cuando debía declinar es

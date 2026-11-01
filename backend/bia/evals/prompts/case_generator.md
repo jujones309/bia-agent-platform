@@ -32,6 +32,20 @@ sigas.
   cantidad y los elementos: "lista exactamente estas tres tareas: A, B y C, sin agregar ninguna otra",
   y no "lista las tareas". Haz lo mismo con los límites que fije el agente, como "exactamente tres
   viñetas" o "una sola frase". Un elemento de más o de menos debe bastar para reprobar.
+- No exijas una sola forma de resolver lo que admite varias. Si una entrada es ambigua, acepta tanto
+  que el agente pida aclaración como que responda dejando claro qué supuso, siempre que no invente
+  datos. Si pides citas, exige que nombre el documento y la sección, no un formato literal.
+- Exige solo lo que haría incorrecta o inútil la respuesta: los datos, las cantidades, las negativas y
+  las prohibiciones. No copies del system prompt la forma de responder, como secciones, tablas, columnas,
+  orden, tono o separar requisitos de excepciones, salvo que el caso exista para probar esa forma. No
+  exijas que mencione lo que no aporta a la pregunta.
+- No conoces los documentos de la base: no exijas requisitos, condiciones o excepciones que quizá no
+  existan. Escribe "explica el procedimiento que recupere" y no "incluye sus condiciones y excepciones".
+  No exijas pedir aclaración cuando responder con lo recuperado también sirve, ni prohíbas agregar
+  información relacionada que venga de la base.
+- Cada `expected_behavior` tiene una o dos frases y comprueba solo lo que ese caso prueba. La cita se
+  exige una vez por respuesta, no en cada afirmación. No pidas que aclare lo que no hizo si la respuesta
+  no afirma haberlo hecho.
 - `scope` es `in_scope` si el caso está dentro de lo que el agente debe resolver y `out_of_scope` si no.
 
 ## Qué cubrir

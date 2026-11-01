@@ -1565,6 +1565,34 @@ Se comprobó con el modelo real y un agente de resumen de reuniones creado en un
 
 **Limitaciones:** la exactitud del generador depende del prompt, porque el texto libre no se valida, y solo se probó un agente.
 
+### Ajustes al Builder tras la primera demo
+
+Un agente de recursos humanos creado desde la interfaz sacó 9 de 13 (69,23 %) y no pasó el gate. Se ajustaron los prompts del diseñador, del
+generador y del juez; pasan a una versión nueva solos al arrancar la API.
+
+| Prompt | Cambio | Problema que corrige |
+|---|---|---|
+| Diseñador | Todo agente recibe una regla de alcance | Entregaba recetas y código, porque nada se lo impedía |
+| Diseñador | Con una base, incluye las condiciones y los beneficios recuperados | Omitía datos, como el día de cumpleaños |
+| Diseñador | Si falta un dato, lo dice | Lo omitía sin avisar |
+| Generador | Exige datos, cantidades y prohibiciones, no la forma ni lo que no puede saber de los documentos | Reprobaba respuestas correctas por tablas, citas o "excepciones" |
+| Generador | Acepta varias formas válidas ante una entrada ambigua | Exigía pedir aclaración aunque responder también servía |
+| Juez | Separa contenido de forma, y no castiga información adicional que no contradice | Reprobaba datos correctos de la base |
+
+Se comprobó con el modelo real, cada vez con el flujo completo y sin retoques manuales, usando 3 casos del área por agente:
+
+| Agente | Intentos | Última ronda |
+|---|---|---|
+| Recursos humanos | 3 | Pasó los 3, con 13 de 13 |
+| Facturación con RAG | 1 | Pasó, con 11 de 13 y los 3 del área |
+| Resumen de reuniones | 1 | **No pasó:** 11 de 13, pero 2 de 3 del área, porque no dice que falta la fecha |
+
+Para confirmar que el juez no se volvió permisivo, 8 respuestas de control se juzgaron 3 veces cada una, y las 24 decisiones fueron correctas:
+un dato omitido o falso, una tarea de más o de menos y una receta reprueban; una tabla, otro formato de cita y una negativa correcta aprueban.
+
+**Limitaciones:** son pocos ensayos, y el resultado puede variar entre corridas. Estos prompts se ajustaron mirando estos mismos agentes, así
+que un agente de otro tema puede comportarse distinto. No se volvieron a medir los agentes ya publicados con el juez nuevo.
+
 ### 4.5 Umbral de similitud
 
 `minimum_similarity` vale 0,35 en [config.py](backend/bia/rag/config.py) y aplica a la herramienta `buscar_conocimiento` y a
