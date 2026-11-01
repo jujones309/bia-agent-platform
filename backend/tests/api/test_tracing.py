@@ -52,6 +52,7 @@ def _run_with_one_step() -> RunRecord:
         input="¿Cuál es mi saldo?",
         output=None,
         status=RunStatus.FAILED,
+        error="Sin datos",
         total_tokens=0,
         total_cost=Decimal(0),
         latency_ms=12,
@@ -132,7 +133,7 @@ def test_metrics_returns_the_aggregates_of_the_requested_agent(
     monkeypatch.setattr(
         tracing_router,
         "get_agent_metrics",
-        lambda _session, requested_id: AgentMetrics(
+        lambda _session, requested_id, _origin: AgentMetrics(
             agent_id=requested_id,
             total_runs=4,
             total_cost=Decimal("0.35"),
@@ -150,12 +151,13 @@ def test_metrics_returns_the_aggregates_of_the_requested_agent(
     assert float(body["total_cost"]) == 0.35
 
 
-def _raise_agent_not_found(_session: object, agent_id: UUID) -> AgentMetrics:
+def _raise_agent_not_found(_session: object, agent_id: UUID, _origin: object) -> AgentMetrics:
     """Fails as the repository does for an agent that does not exist.
 
     Args:
         _session: The unused session of the request.
         agent_id: The requested agent.
+        _origin: The unused origin filter.
 
     Returns:
         AgentMetrics: never; declared to match the replaced function.
@@ -164,6 +166,35 @@ def _raise_agent_not_found(_session: object, agent_id: UUID) -> AgentMetrics:
         AgentNotFoundError: Always.
     """
     raise AgentNotFoundError(f"There is no agent with id {agent_id}")
+
+
+def test_metrics_forwards_the_origin_and_rejects_an_unknown_one(
+    api_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies the filter reaches the read, and a typo is not an empty result."""
+    agent_id = uuid4()
+    origins: list[RunOrigin | None] = []
+    app.dependency_overrides[get_session] = lambda: sentinel.session
+    monkeypatch.setattr(
+        tracing_router,
+        "get_agent_metrics",
+        lambda _session, requested_id, origin: (
+            origins.append(origin)
+            or AgentMetrics(
+                agent_id=requested_id,
+                total_runs=0,
+                total_cost=Decimal(0),
+                latency_p50_ms=None,
+                error_rate=None,
+            )
+        ),
+    )
+
+    api_client.get(f"/agents/{agent_id}/metrics", params={"origin": "production"})
+    rejected = api_client.get(f"/agents/{agent_id}/metrics", params={"origin": "typo"})
+
+    assert origins == [RunOrigin.PRODUCTION]
+    assert rejected.status_code == 422
 
 
 def test_metrics_answers_404_for_an_unknown_agent(

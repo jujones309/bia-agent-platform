@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS runs (
     output text,
     -- text: execution state.
     status text NOT NULL,
+    -- text: why the run failed; null unless it failed.
+    error text,
     -- integer: sum of the tokens of its steps.
     total_tokens integer NOT NULL DEFAULT 0,
     -- numeric: sum in USD of the cost of its steps.

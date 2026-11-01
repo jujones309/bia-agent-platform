@@ -128,6 +128,7 @@ class RunRecord(BaseModel):
     input: str
     output: str | None
     status: RunStatus
+    error: str | None
     total_tokens: int
     total_cost: Decimal
     latency_ms: int | None

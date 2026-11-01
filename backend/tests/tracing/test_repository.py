@@ -106,6 +106,23 @@ def test_metrics_aggregate_only_the_runs_of_the_agent(connection: Connection) ->
     assert metrics.error_rate == pytest.approx(1 / 3)
 
 
+def test_metrics_can_count_only_one_origin(connection: Connection) -> None:
+    """Verifies real usage can be read apart from evals, which often fail on purpose."""
+    recorder = RunRecorder(connection)
+    agent_id, version_id = _new_agent(connection)
+    recorder.fail_run(recorder.start_run(agent_id, version_id, RunOrigin.EVAL, "x").id, "boom")
+    recorder.finish_run(recorder.start_run(agent_id, version_id, RunOrigin.PRODUCTION, "y").id, "z")
+
+    with database_session(connection) as session:
+        production = get_agent_metrics(session, agent_id, RunOrigin.PRODUCTION)
+        playground = get_agent_metrics(session, agent_id, RunOrigin.PLAYGROUND)
+        every_origin = get_agent_metrics(session, agent_id)
+
+    assert (production.total_runs, production.error_rate) == (1, 0)
+    assert (playground.total_runs, playground.error_rate) == (0, None)
+    assert (every_origin.total_runs, every_origin.error_rate) == (2, 0.5)
+
+
 def test_metrics_of_an_agent_without_runs_have_no_latency_or_rate(connection: Connection) -> None:
     """Verifies a new agent gets zeros instead of a division by zero or a 404."""
     agent_id, _ = _new_agent(connection)

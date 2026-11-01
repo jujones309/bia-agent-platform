@@ -157,15 +157,16 @@ def test_finish_measures_the_duration_of_the_run(
     assert run.finished_at > run.started_at
 
 
-def test_finish_without_output_marks_failure_and_keeps_what_was_spent(
+def test_fail_stores_the_reason_and_keeps_what_was_spent(
     connection: Connection, recorder: RunRecorder, open_run: RunRecord
 ) -> None:
     """Verifies a failed run still accounts for the tokens it consumed."""
     recorder.add_step(open_run.id, _llm_step(insert_model(connection), 5, 5, "0.00000001"))
 
-    run = recorder.finish_run(open_run.id, None)
+    run = recorder.fail_run(open_run.id, "Sin respuesta")
 
     assert run.status is RunStatus.FAILED
+    assert run.error == "Sin respuesta"
     assert run.output is None
     assert run.total_tokens == 10
     assert run.total_cost == Decimal("0.00000001")
@@ -173,7 +174,7 @@ def test_finish_without_output_marks_failure_and_keeps_what_was_spent(
 
 def test_finish_without_steps_totals_zero(recorder: RunRecorder, open_run: RunRecord) -> None:
     """Verifies a run that never reached a step closes instead of failing on NULL totals."""
-    run = recorder.finish_run(open_run.id, None)
+    run = recorder.fail_run(open_run.id, "boom")
 
     assert run.total_tokens == 0
     assert run.total_cost == 0
@@ -189,11 +190,12 @@ def test_a_closed_run_cannot_change(
     with pytest.raises(RunNotRunningError, match=str(open_run.id)):
         recorder.add_step(open_run.id, _tool_step())
     with pytest.raises(RunNotRunningError, match=str(open_run.id)):
-        recorder.finish_run(open_run.id, None)
+        recorder.fail_run(open_run.id, "tarde")
 
     with database_session(connection) as session:
         stored = list_runs(session, open_run.agent_id, limit=1)[0]
     assert stored.output == "primera"
+    assert stored.error is None
     assert stored.status is RunStatus.SUCCEEDED
     assert stored.steps == []
 

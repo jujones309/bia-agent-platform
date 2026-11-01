@@ -8,6 +8,7 @@ SELECT
     input,
     output,
     status,
+    error,
     total_tokens,
     total_cost,
     latency_ms,

@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from bia.database.queries import DatabaseTable, SqlOperation, load_sql
-from bia.tracing.artifacts import AgentMetrics, RunRecord, RunStatus, RunStepRecord
+from bia.tracing.artifacts import AgentMetrics, RunOrigin, RunRecord, RunStatus, RunStepRecord
 
 
 class AgentNotFoundError(LookupError):
@@ -61,15 +61,18 @@ def list_runs(session: Session, agent_id: UUID | None, limit: int) -> list[RunRe
     return [run.model_copy(update={"steps": steps_by_run.get(run.id, [])}) for run in runs]
 
 
-def get_agent_metrics(session: Session, agent_id: UUID) -> AgentMetrics:
+def get_agent_metrics(
+    session: Session, agent_id: UUID, origin: RunOrigin | None = None
+) -> AgentMetrics:
     """Computes the run count, total cost, p50 latency and error rate of an agent.
 
     Exists so an agent's owner can see how it behaves in one call; used by the metrics API.
-    Runs of every origin count, including evals and the playground.
+    The origin filter lets real usage be read apart from evals and the playground.
 
     Args:
         session: The open session to read through.
         agent_id: The agent to summarize.
+        origin: The only origin to count, or None to count every origin.
 
     Returns:
         AgentMetrics: the aggregates; an agent without runs gets zeros and no latency or rate.
@@ -78,7 +81,7 @@ def get_agent_metrics(session: Session, agent_id: UUID) -> AgentMetrics:
         AgentNotFoundError: If no agent has that identifier.
     """
     sql = load_sql(DatabaseTable.RUNS, SqlOperation.METRICS_BY_AGENT)
-    parameters = {"agent_id": str(agent_id), "failed_status": RunStatus.FAILED}
+    parameters = {"agent_id": str(agent_id), "failed_status": RunStatus.FAILED, "origin": origin}
     row = session.execute(text(sql), parameters).mappings().one_or_none()
     if row is None:
         raise AgentNotFoundError(f"There is no agent with id {agent_id}")

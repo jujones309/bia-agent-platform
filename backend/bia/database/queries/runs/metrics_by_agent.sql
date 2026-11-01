@@ -1,5 +1,6 @@
 -- Aggregates the runs of one agent. Starts from agents so an agent without runs still gets
 -- a row and an unknown agent gets none.
+-- A null origin counts every origin; the filter sits on the join so the agent keeps its row.
 -- Consumed by get_agent_metrics in bia/tracing/repository.py.
 -- The p50 and the error rate only consider finished runs: running ones have no latency or outcome.
 SELECT
@@ -10,6 +11,8 @@ SELECT
     CAST(COUNT(runs.id) FILTER (WHERE runs.status = :failed_status) AS double precision)
         / NULLIF(COUNT(runs.finished_at), 0) AS error_rate
 FROM agents
-LEFT JOIN runs ON runs.agent_id = agents.id
+LEFT JOIN runs
+    ON runs.agent_id = agents.id
+    AND (CAST(:origin AS text) IS NULL OR runs.origin = CAST(:origin AS text))
 WHERE agents.id = CAST(:agent_id AS uuid)
 GROUP BY agents.id;

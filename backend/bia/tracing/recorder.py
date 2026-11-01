@@ -23,7 +23,7 @@ class RunNotRunningError(LookupError):
     """Signals a write to a run that does not exist or was already closed.
 
     Exists so a closed audit record can never change silently, and so a wrong identifier
-    fails close to the source. Raised by `RunRecorder.add_step` and `RunRecorder.finish_run`.
+    fails close to the source. Raised by the write methods of `RunRecorder`.
     """
 
 
@@ -101,15 +101,54 @@ class RunRecorder:
         )
         return record
 
-    def finish_run(self, run_id: UUID, output: str | None) -> RunRecord:
-        """Closes an open run, summing the tokens and cost of its steps.
+    def finish_run(self, run_id: UUID, output: str) -> RunRecord:
+        """Closes an open run as succeeded, summing the tokens and cost of its steps.
 
         Exists so totals always come from the recorded steps and cannot disagree with them;
-        called once at the end of an execution, also when it fails.
+        called once at the end of a successful execution.
 
         Args:
             run_id: The run to close.
-            output: The final answer, or None if the run failed, which sets its status.
+            output: The final answer.
+
+        Returns:
+            RunRecord: the closed run, with its totals and its steps.
+
+        Raises:
+            RunNotRunningError: If the run does not exist or was already closed.
+        """
+        return self._close_run(run_id, RunStatus.SUCCEEDED, output, None)
+
+    def fail_run(self, run_id: UUID, error: str) -> RunRecord:
+        """Closes an open run as failed, keeping the reason and what it already spent.
+
+        Exists because some failures, such as reaching the iteration limit, belong to no
+        step; called once when an execution cannot produce an answer.
+
+        Args:
+            run_id: The run to close.
+            error: Why the run failed.
+
+        Returns:
+            RunRecord: the closed run, with its totals and its steps.
+
+        Raises:
+            RunNotRunningError: If the run does not exist or was already closed.
+        """
+        return self._close_run(run_id, RunStatus.FAILED, None, error)
+
+    def _close_run(
+        self, run_id: UUID, status: RunStatus, output: str | None, error: str | None
+    ) -> RunRecord:
+        """Writes the outcome of a run and reads back its totals and steps.
+
+        Exists as the shared write of `finish_run` and `fail_run`.
+
+        Args:
+            run_id: The run to close.
+            status: The final status.
+            output: The final answer, if it succeeded.
+            error: The reason, if it failed.
 
         Returns:
             RunRecord: the closed run, with its totals and its steps.
@@ -120,7 +159,8 @@ class RunRecorder:
         parameters = {
             "run_id": str(run_id),
             "output": output,
-            "status": RunStatus.FAILED if output is None else RunStatus.SUCCEEDED,
+            "status": status,
+            "error": error,
             "running_status": RunStatus.RUNNING,
         }
         with database_session(self._bind) as session:
@@ -172,7 +212,7 @@ def _require_open_run(row: RowMapping | None, run_id: UUID) -> RowMapping:
     """Verifies that a conditional write on an open run actually matched it.
 
     Exists because the write queries return no row for a missing or closed run; used by
-    `RunRecorder.add_step` and `RunRecorder.finish_run`, after their session ended, so the
+    `RunRecorder.add_step` and `RunRecorder._close_run`, after their session ended, so the
     failure does not roll back anything that was already recorded.
 
     Args:

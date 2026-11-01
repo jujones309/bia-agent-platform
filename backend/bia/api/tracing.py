@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from bia.api.dependencies import get_session
-from bia.tracing.artifacts import AgentMetrics, RunRecord
+from bia.tracing.artifacts import AgentMetrics, RunOrigin, RunRecord
 from bia.tracing.repository import AgentNotFoundError, get_agent_metrics, list_runs
 
 _DEFAULT_RUNS_LIMIT = 50
@@ -37,7 +37,11 @@ def get_runs(
 
 
 @router.get("/agents/{agent_id}/metrics", response_model=AgentMetrics)
-def get_metrics(agent_id: UUID, session: Annotated[Session, Depends(get_session)]) -> AgentMetrics:
+def get_metrics(
+    agent_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    origin: RunOrigin | None = None,
+) -> AgentMetrics:
     """Retrieves the aggregated metrics of an agent.
 
     Exists so an agent's cost, speed and reliability can be read at a glance; served as
@@ -46,6 +50,7 @@ def get_metrics(agent_id: UUID, session: Annotated[Session, Depends(get_session)
     Args:
         agent_id: The agent to summarize.
         session: The session of the request.
+        origin: The only origin to count; every origin when omitted.
 
     Returns:
         AgentMetrics: the aggregates of the agent's runs.
@@ -54,6 +59,6 @@ def get_metrics(agent_id: UUID, session: Annotated[Session, Depends(get_session)
         HTTPException: A 404 if no agent has that identifier.
     """
     try:
-        return get_agent_metrics(session, agent_id)
+        return get_agent_metrics(session, agent_id, origin)
     except AgentNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error

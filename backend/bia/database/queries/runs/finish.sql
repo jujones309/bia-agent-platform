@@ -13,6 +13,7 @@ UPDATE runs
 SET
     output = :output,
     status = :status,
+    error = :error,
     total_tokens = step_totals.total_tokens,
     total_cost = step_totals.total_cost,
     latency_ms = CAST(EXTRACT(EPOCH FROM clock_timestamp() - runs.started_at) * 1000 AS integer),
@@ -27,6 +28,7 @@ RETURNING
     runs.input,
     runs.output,
     runs.status,
+    runs.error,
     runs.total_tokens,
     runs.total_cost,
     runs.latency_ms,
