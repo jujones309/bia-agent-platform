@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from bia.api import agents as agents_api
 from bia.api import builder as builder_api
+from bia.api import evals as evals_api
 from bia.api import rag as rag_api
 from bia.api import runtime as runtime_api
 from bia.api import tracing as tracing_api
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
     application.include_router(runtime_api.router)
     application.include_router(rag_api.router)
     application.include_router(builder_api.router)
+    application.include_router(evals_api.router)
     logger.info("Application started in %s environment", settings.environment.value)
     return application
 
