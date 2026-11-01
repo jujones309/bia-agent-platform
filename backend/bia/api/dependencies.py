@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from bia.database.connection import database_session, get_engine
@@ -16,3 +17,16 @@ def get_session() -> Iterator[Session]:
     """
     with database_session(get_engine()) as session:
         yield session
+
+
+def get_database_engine() -> Engine:
+    """Provides the engine to routes that manage their own short transactions.
+
+    Exists because a request-scoped session would stay open for a whole agent execution,
+    holding a pooler connection during every LLM call; used through `Depends` by
+    `bia/api/runtime.py`.
+
+    Returns:
+        Engine: the process-wide engine.
+    """
+    return get_engine()
