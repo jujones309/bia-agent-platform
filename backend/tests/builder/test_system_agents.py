@@ -10,8 +10,10 @@ from bia.agents.registry import add_version
 from bia.agents.repository import get_active_version, get_agent, list_versions
 from bia.builder import system_agents
 from bia.builder.system_agents import (
+    CASE_GENERATOR_AGENT_ID,
     DESIGNER_AGENT_ID,
     DUPLICATE_JUDGE_AGENT_ID,
+    EVAL_JUDGE_AGENT_ID,
     sync_system_agents,
 )
 from bia.catalog.models.artifacts import ModelSize
@@ -84,6 +86,24 @@ def test_sync_registers_both_agents_as_published_parts_of_the_platform(
     )
     assert judge_model.size is ModelSize.SMALL
     assert designer_model.size is ModelSize.LARGE
+
+
+def test_sync_registers_the_agents_of_the_evals_with_their_prompts(connection: Connection) -> None:
+    """Verifies the generator and the judge of the evals exist, and each runs its own prompt."""
+    _sync(connection)
+
+    with database_session(connection) as session:
+        generator_spec = get_active_version(session, CASE_GENERATOR_AGENT_ID).spec
+        judge_spec = get_active_version(session, EVAL_JUDGE_AGENT_ID).spec
+        generator_model = get_catalog_model(session, generator_spec.model_id)
+        judge_model = get_catalog_model(session, judge_spec.model_id)
+
+    assert generator_spec.system_prompt == load_prompt(
+        PromptVertical.EVALS, PromptName.CASE_GENERATOR
+    )
+    assert judge_spec.system_prompt == load_prompt(PromptVertical.EVALS, PromptName.JUDGE)
+    assert generator_model.size is ModelSize.LARGE
+    assert judge_model.size is ModelSize.SMALL
 
 
 def test_sync_is_idempotent(connection: Connection) -> None:

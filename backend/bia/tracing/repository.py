@@ -54,6 +54,34 @@ def list_runs(session: Session, agent_id: UUID | None, limit: int) -> list[RunRe
     return [run.model_copy(update={"steps": steps_by_run.get(run.id, [])}) for run in runs]
 
 
+def list_succeeded_runs(
+    session: Session, agent_id: UUID, origin: RunOrigin, limit: int
+) -> list[RunRecord]:
+    """Lists the most recent runs of an agent that ended with an answer, without their steps.
+
+    Exists as the sample of the production monitoring, which judges only the final answer; used by
+    `monitor_agent`.
+
+    Args:
+        session: The open session to read through.
+        agent_id: The agent whose runs are wanted.
+        origin: The only origin to include.
+        limit: The maximum number of runs to return.
+
+    Returns:
+        list[RunRecord]: the matching runs, newest first.
+    """
+    sql = load_sql(DatabaseTable.RUNS, SqlOperation.LIST_SUCCEEDED_BY_ORIGIN)
+    parameters = {
+        "agent_id": str(agent_id),
+        "origin": origin,
+        "status": RunStatus.SUCCEEDED,
+        "limit": limit,
+    }
+    rows = session.execute(text(sql), parameters).mappings()
+    return [RunRecord.model_validate(dict(row)) for row in rows]
+
+
 def get_agent_metrics(
     session: Session, agent_id: UUID, origin: RunOrigin | None = None
 ) -> AgentMetrics:

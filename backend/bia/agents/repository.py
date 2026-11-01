@@ -141,6 +141,28 @@ def set_active_version(session: Session, agent_id: UUID, version_number: int) ->
     return _to_agent(session.execute(text(sql), parameters), agent_id)
 
 
+def set_agent_status(session: Session, agent_id: UUID, status: AgentStatus) -> Agent:
+    """Moves an agent to another stage of its lifecycle.
+
+    Exists as the single write of the status; used by the registry and by `bia/evals/`, after
+    locking the agent.
+
+    Args:
+        session: The open session whose transaction contains the write.
+        agent_id: The agent to change.
+        status: The stage to move it to.
+
+    Returns:
+        Agent: the updated agent.
+
+    Raises:
+        AgentNotFoundError: If no agent has that identifier.
+    """
+    sql = load_sql(DatabaseTable.AGENTS, SqlOperation.SET_STATUS)
+    parameters = {"agent_id": str(agent_id), "status": status}
+    return _to_agent(session.execute(text(sql), parameters), agent_id)
+
+
 def upsert_system_agent(session: Session, agent_id: UUID, name: str, description: str) -> None:
     """Registers a published part of the platform, or refreshes its name and description.
 

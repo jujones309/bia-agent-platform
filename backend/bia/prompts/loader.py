@@ -17,6 +17,7 @@ class PromptVertical(StrEnum):
 
     BUILDER_DUPLICATES = "builder/duplicates"
     BUILDER_DESIGNER = "builder/designer"
+    EVALS = "evals"
 
 
 class PromptName(StrEnum):
@@ -27,6 +28,7 @@ class PromptName(StrEnum):
 
     JUDGE = "judge"
     DESIGNER = "designer"
+    CASE_GENERATOR = "case_generator"
 
 
 class PromptFileNotFoundError(FileNotFoundError):

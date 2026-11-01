@@ -21,13 +21,15 @@ logger = logging.getLogger(__name__)
 
 DUPLICATE_JUDGE_AGENT_ID = UUID("5d0c6f2e-8a51-4f0b-9f1e-2f6a7b3c1d01")
 DESIGNER_AGENT_ID = UUID("5d0c6f2e-8a51-4f0b-9f1e-2f6a7b3c1d02")
+CASE_GENERATOR_AGENT_ID = UUID("5d0c6f2e-8a51-4f0b-9f1e-2f6a7b3c1d03")
+EVAL_JUDGE_AGENT_ID = UUID("5d0c6f2e-8a51-4f0b-9f1e-2f6a7b3c1d04")
 
 
 @dataclass(frozen=True)
 class _SystemAgentDefinition:
-    """Declares a part of the builder as an agent of the registry.
+    """Declares a part of the builder or the evals as an agent of the registry.
 
-    Exists so the builder appears in the platform's own inventories and traces, with its prompts
+    Exists so they appear in the platform's own inventories and traces, with its prompts
     versioned like any other spec; consumed by `sync_system_agents`.
     """
 
@@ -58,6 +60,24 @@ _DEFINITIONS = (
         prompt_vertical=PromptVertical.BUILDER_DESIGNER,
         prompt_name=PromptName.DESIGNER,
         model_size=ModelSize.LARGE,  # design decisions, where quality outweighs cost
+    ),
+    _SystemAgentDefinition(
+        agent_id=CASE_GENERATOR_AGENT_ID,
+        name="Generador de casos",
+        description="Escribe los casos de prueba de un agente a partir de su spec.",
+        purpose="Dar al gate de publicación casos con los que medir a cada agente.",
+        prompt_vertical=PromptVertical.EVALS,
+        prompt_name=PromptName.CASE_GENERATOR,
+        model_size=ModelSize.LARGE,  # one call per agent, and bad cases make the gate meaningless
+    ),
+    _SystemAgentDefinition(
+        agent_id=EVAL_JUDGE_AGENT_ID,
+        name="Juez de evals",
+        description="Decide si la respuesta de un agente cumple el comportamiento esperado.",
+        purpose="Medir las respuestas de los agentes antes de publicarlos y en producción.",
+        prompt_vertical=PromptVertical.EVALS,
+        prompt_name=PromptName.JUDGE,
+        model_size=ModelSize.SMALL,  # a well-scoped comparison, repeated once per case
     ),
 )
 
@@ -143,7 +163,7 @@ def _sync_system_agent(session: Session, definition: _SystemAgentDefinition) -> 
 
 
 def sync_system_agents(session: Session) -> None:
-    """Makes the registry reflect the parts of the builder.
+    """Makes the registry reflect the parts of the builder and the evals.
 
     Exists because every LLM call is traced as a run, and a run must reference an agent; used at
     application startup by `bia/api/main.py`. It makes no LLM call: system agents have no

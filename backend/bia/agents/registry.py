@@ -4,7 +4,15 @@ from uuid import UUID
 from sqlalchemy import Connection, Engine
 from sqlalchemy.orm import Session
 
-from bia.agents.artifacts import AgentDetail, AgentDraft, AgentSpecPatch, AgentVersion
+from bia.agents.artifacts import (
+    Agent,
+    AgentDetail,
+    AgentDraft,
+    AgentKind,
+    AgentSpecPatch,
+    AgentStatus,
+    AgentVersion,
+)
 from bia.agents.repository import (
     ActiveVersionNotFoundError,
     get_active_version,
@@ -14,6 +22,7 @@ from bia.agents.repository import (
     insert_version,
     lock_agent,
     set_active_version,
+    set_agent_status,
 )
 from bia.agents.validation import merge_spec_patch, validate_new_spec, validate_rollback_spec
 from bia.catalog.models.artifacts import CatalogModel
@@ -104,10 +113,34 @@ def create_agent(
     return AgentDetail(agent=agent, active_version=version)
 
 
+def _move_active_version(session: Session, agent: Agent, version_number: int) -> Agent:
+    """Points an agent at a version, taking back its publication if that version changes.
+
+    Exists because a published agent promises that what it runs passed the gate, and only the new
+    version's results can tell. It goes back to testing until `POST /agents/{id}/publish` checks
+    them. System agents stay published, since they do not go through the gate.
+
+    Args:
+        session: The open session whose transaction contains the change.
+        agent: The agent, locked, as it stood before the change.
+        version_number: The number of the version to execute from now on.
+
+    Returns:
+        Agent: the updated agent.
+    """
+    updated = set_active_version(session, agent.id, version_number)
+    is_gated = agent.status is AgentStatus.PUBLISHED and agent.kind is AgentKind.USER
+    if not is_gated or version_number == agent.active_version_number:
+        return updated
+    logger.info("Agent %s left published: version %d is not gated", agent.id, version_number)
+    return set_agent_status(session, agent.id, AgentStatus.TESTING)
+
+
 def add_version(session: Session, agent_id: UUID, patch: AgentSpecPatch) -> AgentDetail:
     """Applies a change to an agent's spec as a new version, which becomes the active one.
 
-    Exists because versions are immutable: editing never overwrites. Used by the agents API.
+    Exists because versions are immutable: editing never overwrites. Used by the agents API. A
+    published agent goes back to testing, because the new version has not passed the gate.
 
     Args:
         session: The open session whose transaction contains the whole change.
@@ -122,11 +155,11 @@ def add_version(session: Session, agent_id: UUID, patch: AgentSpecPatch) -> Agen
         ActiveVersionNotFoundError: If the agent has no version to start from.
         InvalidAgentSpecError: If the resulting spec is invalid or changes nothing.
     """
-    lock_agent(session, agent_id)
+    locked = lock_agent(session, agent_id)
     spec = merge_spec_patch(get_active_version(session, agent_id).spec, patch)
     validate_new_spec(session, spec)
     version = insert_version(session, agent_id, spec)
-    agent = set_active_version(session, agent_id, version.version_number)
+    agent = _move_active_version(session, locked, version.version_number)
     logger.info("Agent %s moved to new version %d", agent_id, version.version_number)
     return AgentDetail(agent=agent, active_version=version)
 
@@ -135,7 +168,8 @@ def activate_version(session: Session, agent_id: UUID, version_number: int) -> A
     """Makes an existing version the one an agent executes.
 
     Exists so a bad change can be undone without writing anything new; used by the agents API.
-    Activating the version already active changes nothing and is not an error.
+    Activating the version already active changes nothing and is not an error. Otherwise a published
+    agent goes back to testing; publishing again costs nothing if that version still passes.
 
     Args:
         session: The open session whose transaction contains the change.
@@ -150,10 +184,10 @@ def activate_version(session: Session, agent_id: UUID, version_number: int) -> A
         AgentVersionNotFoundError: If the agent has no version with that number.
         InvalidAgentSpecError: If the runtime could not execute that version.
     """
-    lock_agent(session, agent_id)
+    locked = lock_agent(session, agent_id)
     version = get_version(session, agent_id, version_number)
     validate_rollback_spec(session, version.spec)
-    agent = set_active_version(session, agent_id, version_number)
+    agent = _move_active_version(session, locked, version_number)
     logger.info("Agent %s rolled to version %d", agent_id, version_number)
     return AgentDetail(agent=agent, active_version=version)
 

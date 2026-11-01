@@ -63,6 +63,16 @@ def test_ask_traces_tokens_and_cost_under_the_exact_version(provider: FakeModelP
     assert step.cost == Decimal(20) / Decimal(1_000_000)
 
 
+def test_run_records_the_origin_it_was_opened_with() -> None:
+    """Verifies the work of the evals is not counted as work of the builder in the audit."""
+    recorder = FakeRunRecorder()
+
+    with SystemAgentRun(recorder, build_execution(), "caso", RunOrigin.EVAL) as run:
+        run.finish("ok")
+
+    assert recorder.run.origin is RunOrigin.EVAL
+
+
 def test_failed_call_is_recorded_and_fails_the_run(provider: FakeModelProvider) -> None:
     """Verifies a failure leaves both the step and the closed run, and still reaches the caller."""
     recorder = FakeRunRecorder()

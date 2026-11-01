@@ -34,7 +34,7 @@ def unit_vector(axis: int) -> list[float]:
 
 
 def insert_registered_agent(connection: Connection, embedding: list[float] | None) -> UUID:
-    """Inserts a published agent of an employee, since no endpoint publishes until phase 9.
+    """Inserts a published agent of an employee, without going through the gate.
 
     Args:
         connection: The connection of the test's transaction.

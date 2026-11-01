@@ -17,8 +17,10 @@ from bia.agents.repository import (
     AgentVersionNotFoundError,
     list_agents,
     list_versions,
+    set_agent_status,
 )
 from bia.agents.validation import InvalidAgentSpecError
+from bia.builder.system_agents import EVAL_JUDGE_AGENT_ID, sync_system_agents
 from bia.catalog.models.repository import EmbeddingModelUnavailableError
 from bia.catalog.tools.sync import sync_tools
 from bia.database.connection import database_session
@@ -392,6 +394,73 @@ def test_a_spec_with_an_unknown_base_is_rejected(
         pytest.raises(InvalidAgentSpecError, match=str(missing_id)),
     ):
         add_version(session, agent_id, AgentSpecPatch(**changes))
+
+
+def _publish_directly(connection: Connection, agent_id: UUID) -> None:
+    """Marks an agent as published, since the gate belongs to the tests of the evals.
+
+    Args:
+        connection: The connection of the test's transaction.
+        agent_id: The agent to change.
+
+    Returns:
+        None: the status is updated.
+    """
+    with database_session(connection) as session:
+        set_agent_status(session, agent_id, AgentStatus.PUBLISHED)
+
+
+def test_editing_a_published_agent_takes_back_its_publication(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies an untested version cannot keep the status that promises it was tested."""
+    agent_id = _new_agent(connection)
+    _publish_directly(connection, agent_id)
+
+    with database_session(connection) as session:
+        detail = add_version(session, agent_id, AgentSpecPatch(purpose="Otro"))
+
+    assert detail.agent.status is AgentStatus.TESTING
+    assert detail.agent.active_version_number == 2
+
+
+def test_rolling_back_a_published_agent_takes_back_its_publication(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies a rollback also goes through the gate, even if the version is an older one."""
+    agent_id = _new_agent(connection)
+    with database_session(connection) as session:
+        add_version(session, agent_id, AgentSpecPatch(purpose="Otro"))
+    _publish_directly(connection, agent_id)
+
+    with database_session(connection) as session:
+        detail = activate_version(session, agent_id, 1)
+
+    assert detail.agent.status is AgentStatus.TESTING
+
+
+def test_activating_the_active_version_keeps_the_publication(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies a call that changes nothing does not unpublish the agent."""
+    agent_id = _new_agent(connection)
+    _publish_directly(connection, agent_id)
+
+    with database_session(connection) as session:
+        detail = activate_version(session, agent_id, 1)
+
+    assert detail.agent.status is AgentStatus.PUBLISHED
+
+
+def test_editing_a_system_agent_keeps_it_published(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies changing the model of the builder does not leave it out of the inventories."""
+    with database_session(connection) as session:
+        sync_system_agents(session)
+        detail = add_version(session, EVAL_JUDGE_AGENT_ID, AgentSpecPatch(purpose="Otro"))
+
+    assert detail.agent.status is AgentStatus.PUBLISHED
 
 
 class _FailingEmbed:

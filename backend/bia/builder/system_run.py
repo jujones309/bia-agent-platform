@@ -23,23 +23,31 @@ logger = logging.getLogger(__name__)
 class SystemAgentRun:
     """Traces the work of a system agent as one run, as a context manager.
 
-    Exists because the judge and the designer need structured answers, which the tool-calling loop
+    Exists because the system agents need structured answers, which the tool-calling loop
     of `AgentRunner` does not produce, yet every LLM call must be traced. Guarantees that each call
     is recorded, even if it fails, and that the run ends closed: leaving the block on an exception
-    fails the run and lets the exception propagate. Consumed by `bia/builder/`.
+    fails the run and lets the exception propagate. Consumed by `bia/builder/` and `bia/evals/`.
     """
 
-    def __init__(self, recorder: RunRecorder, execution: AgentExecution, input_text: str) -> None:
+    def __init__(
+        self,
+        recorder: RunRecorder,
+        execution: AgentExecution,
+        input_text: str,
+        origin: RunOrigin = RunOrigin.BUILDER,
+    ) -> None:
         """Prepares a run that starts when the block is entered.
 
         Args:
             recorder (RunRecorder): Where the trace is written.
             execution (AgentExecution): The active version of the system agent, with its model.
             input_text (str): The need the agent received.
+            origin (RunOrigin): What triggered the work, so evals can be told apart in the audit.
         """
         self._recorder = recorder
         self._execution = execution
         self._input_text = input_text
+        self._origin = origin
         self._run_id: UUID | None = None
         self._is_open = False
 
@@ -52,9 +60,7 @@ class SystemAgentRun:
             Self: the open run.
         """
         version = self._execution.version
-        run = self._recorder.start_run(
-            version.agent_id, version.id, RunOrigin.BUILDER, self._input_text
-        )
+        run = self._recorder.start_run(version.agent_id, version.id, self._origin, self._input_text)
         self._run_id = run.id
         self._is_open = True
         return self
@@ -103,7 +109,7 @@ class SystemAgentRun:
     ) -> ResponseT:
         """Calls the agent's model for a structured answer, and records the call.
 
-        Exists as the only way the judge and the designer reach their model.
+        Exists as the only way the system agents reach their model.
 
         Args:
             messages: The conversation so far.
