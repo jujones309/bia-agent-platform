@@ -1,7 +1,7 @@
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import Connection, column, table
+from sqlalchemy import Connection, Uuid, column, table
 
 from bia.tracing.artifacts import RunOrigin, RunStatus
 
@@ -62,6 +62,30 @@ def insert_agent_version(connection: Connection, agent_id: UUID) -> UUID:
         connection,
         "agent_versions",
         {"id": str(version_id), "agent_id": str(agent_id), "version_number": 1, "spec": "{}"},
+    )
+    return version_id
+
+
+def insert_active_version(connection: Connection, agent_id: UUID, spec: str) -> UUID:
+    """Inserts the first version of an agent and makes it the one that executes.
+
+    Args:
+        connection: The connection of the test's transaction.
+        agent_id: The agent the version belongs to.
+        spec: The spec, as a JSON document.
+
+    Returns:
+        UUID: the identifier of the new version.
+    """
+    version_id = uuid4()
+    _insert(
+        connection,
+        "agent_versions",
+        {"id": str(version_id), "agent_id": str(agent_id), "version_number": 1, "spec": spec},
+    )
+    agents = table("agents", column("id", Uuid), column("active_version_number"))
+    connection.execute(
+        agents.update().where(agents.c.id == agent_id).values(active_version_number=1)
     )
     return version_id
 
