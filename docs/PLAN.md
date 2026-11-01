@@ -122,12 +122,12 @@ Objetivo: un runtime genérico que ejecuta cualquier spec.
 
 Objetivo: inventario de agentes versionado.
 
-- [ ] **6.1 Enums** — `AgentStatus` (`draft`, `testing`, `published`, `archived`) y `AgentKind` (`user`, `system`).
-- [ ] **6.2 Crear agente** — Crea el agente y la versión 1 en `draft`, y genera el embedding de la descripción.
-- [ ] **6.3 Nueva versión** — Editar la spec crea una versión nueva; nunca se sobrescribe una existente.
-- [ ] **6.4 Validación contra catálogo** — Un `model_id` o una tool que no existe, o que está inactiva, produce un error claro. Con tests.
-- [ ] **6.5 API de agentes** — `GET /agents`, `GET /agents/{id}`, `POST /agents`, `PATCH /agents/{id}` (crea una versión) y `GET /agents/{id}/versions`.
-- [ ] **6.6 Rollback** — `POST /agents/{id}/versions/{n}/activate`.
+- [x] **6.1 Enums** — `AgentStatus` (`draft`, `testing`, `published`, `archived`) y `AgentKind` (`user`, `system`).
+- [x] **6.2 Crear agente** — Crea el agente y la versión 1 en `draft`, y genera el embedding de la descripción.
+- [x] **6.3 Nueva versión** — Editar la spec crea una versión nueva; nunca se sobrescribe una existente.
+- [x] **6.4 Validación contra catálogo** — Un `model_id` o una tool que no existe, o que está inactiva, produce un error claro. Con tests.
+- [x] **6.5 API de agentes** — `GET /agents`, `GET /agents/{id}`, `POST /agents`, `PATCH /agents/{id}` (crea una versión) y `GET /agents/{id}/versions`.
+- [x] **6.6 Rollback** — `POST /agents/{id}/versions/{n}/activate`.
 
 ## Fase 7 — RAG
 
@@ -165,7 +165,7 @@ Objetivo: no se publica nada sin pasar pruebas, y se puede vigilar en producció
 - [ ] **9.2 Casos manuales** — `POST /agents/{id}/eval-cases` para que el usuario agregue los suyos.
 - [ ] **9.3 Juez de evals** — Prompt LLM-as-judge que compara el output con el comportamiento esperado y devuelve veredicto, puntaje y razón.
 - [ ] **9.4 Corrida de evals** — Ejecuta todos los casos contra una versión con el runtime real y guarda los resultados.
-- [ ] **9.5 Gate de publicación** — `POST /agents/{id}/publish` exige que la versión activa supere un umbral (p. ej. ≥ 80 %). Si no, devuelve el detalle de los casos fallidos.
+- [ ] **9.5 Gate de publicación** — `POST /agents/{id}/publish` exige que la versión activa supere un umbral (p. ej. ≥ 80 %). Si no, devuelve el detalle de los casos fallidos. Definir también qué pasa al editar o hacer rollback de un agente `published`: hoy `PATCH` y `activate` cambian la versión activa de inmediato, sin pasar por evals.
 - [ ] **9.6 Endpoint de evals** — `POST /agents/{id}/evals/run` y `GET /agents/{id}/evals`.
 - [ ] **9.7 Monitoreo en producción** — Endpoint o script que reevalúa una muestra de runs recientes de producción con el juez y reporta deriva. Si no alcanza el tiempo, queda solo documentado.
 

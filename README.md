@@ -33,13 +33,13 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | 3 | Catálogos (modelos y herramientas) | Terminada |
 | 4 | Trazas | Terminada |
 | 5 | Runtime de agentes | Terminada |
-| 6-14 | Registro, RAG, Builder, frontend y entrega | Pendientes |
+| 6 | Registro de agentes | Terminada |
+| 7-14 | RAG, Builder, frontend y entrega | Pendientes |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
-el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas y el runtime.
-El registro de agentes y el Builder todavía no están construidos, así que por ahora los agentes se
-crean a mano en la base. El detalle está en
-[docs/PLAN.md](docs/PLAN.md).
+el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime y
+el registro de agentes. El Builder todavía no está construido, así que por ahora los agentes se crean
+enviando la spec completa a `POST /agents`. El detalle está en [docs/PLAN.md](docs/PLAN.md).
 
 ## Stack
 
@@ -178,8 +178,8 @@ with database_session(get_engine()) as session:
     row = session.execute(text(sql), {"agent_id": agent_id}).one()
 ```
 
-`GET_BY_ID` es un ejemplo: todavía no existe. Al salir del bloque se hace commit, y si hay una
-excepción se hace rollback y la excepción se propaga.
+Al salir del bloque se hace commit, y si hay una excepción se hace rollback y la excepción se
+propaga.
 
 ### Cambiar los modelos sembrados o sus precios
 
@@ -461,12 +461,10 @@ curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/<id>/run \
 
 Toda respuesta 200 trae `run_id`; la traza se consulta en `GET /runs?agent_id=<id>`.
 
-### Crear un agente de prueba
+### Forma de la spec
 
-Los endpoints para crear agentes llegan en la fase 6. Hasta entonces, inserta una fila en `agents` y
-otra en `agent_versions`, y pon el número de esa versión en `agents.active_version_number`. El campo
-`agent_versions.spec` es un JSON con la forma de `AgentSpec`
-([artifacts.py](backend/bia/agents/artifacts.py)):
+Para crear un agente que ejecutar, ver la guía de la fase 6. La spec es un JSON con la forma de
+`AgentSpec` ([artifacts.py](backend/bia/agents/artifacts.py)):
 
 ```json
 {
@@ -502,3 +500,89 @@ otra en `agent_versions`, y pon el número de esa versión en `agents.active_ver
 `FakeModelProvider` permite probar el loop en cada `uv run pytest`, también en CI. La carga desde la
 base y la traza completa en SQL real están en
 [test_execution.py](backend/tests/runtime/test_execution.py), y requieren `INTEGRATION_DATABASE_URL`.
+
+---
+
+## Guía: fase 6 — Registro de agentes
+
+No hay migración nueva: esta fase usa las tablas `agents` y `agent_versions` que ya existían. La base
+sí necesita un modelo de embeddings activo en el catálogo; el seed ya trae uno.
+
+### Crear un agente
+
+```bash
+curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents \
+  -H 'Content-Type: application/json' -d '{
+    "name": "Asistente de facturación",
+    "description": "Responde dudas de clientes sobre sus facturas",
+    "owner_area": "Servicio al cliente",
+    "creator": "Ana",
+    "spec": {
+      "purpose": "Responder dudas de facturación",
+      "system_prompt": "Eres el asistente de facturación de Bia.",
+      "model_id": "<id de GET /models?only_active=true>",
+      "tool_names": ["consultar_factura"]
+    }
+  }'
+```
+
+El agente queda como `user`, en `draft` y en la versión 1. Ya se puede ejecutar con
+`POST /agents/{id}/run`. Antes de crearlo se valida la spec, y después se genera el embedding de la
+descripción. Si algo falla, no queda nada creado.
+
+El embedding se registra como un run de origen `builder`. Por eso un agente nuevo ya tiene un run y
+su costo en `GET /agents/{id}/metrics`; usa `?origin=playground` para ver solo otros orígenes.
+
+### Editar un agente y volver atrás
+
+```bash
+curl -u demo:$API_ACCESS_PASSWORD -X PATCH localhost:8000/agents/<id> \
+  -H 'Content-Type: application/json' -d '{"guardrails": ["No inventes saldos."]}'
+curl -u demo:$API_ACCESS_PASSWORD localhost:8000/agents/<id>/versions
+curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/<id>/versions/1/activate
+```
+
+- `PATCH` recibe solo los campos de la spec que cambian y crea una versión nueva, que queda activa.
+  Las versiones anteriores nunca se modifican.
+- Después de volver a una versión anterior, el siguiente `PATCH` parte de esa versión y toma el número
+  siguiente de la secuencia.
+- `"knowledge_base_id": null` quita la base de conocimiento. En los demás campos, `null` no es válido.
+
+| Endpoint | Respuestas de error |
+|---|---|
+| `GET /agents` | Ninguna. Lista los agentes, del más nuevo al más viejo. |
+| `GET /agents/{id}` | 404: el agente no existe. |
+| `POST /agents` | 422: spec inválida. 502: falló el embedding. 503: no hay modelo de embeddings activo. |
+| `PATCH /agents/{id}` | 404: el agente no existe o no tiene versión activa. 422: spec inválida o sin cambios. |
+| `GET /agents/{id}/versions` | 404: el agente no existe. |
+| `POST /agents/{id}/versions/{n}/activate` | 404: no existe el agente o la versión. 409: la versión usa una herramienta retirada. |
+
+### Qué valida el catálogo
+
+| Referencia de la spec | Versión nueva (`POST`, `PATCH`) | Volver atrás (`activate`) |
+|---|---|---|
+| Modelo inexistente | Rechazado | Permitido, y el run responde 409 |
+| Modelo retirado | Rechazado | Permitido: el runtime lo sigue ejecutando |
+| Modelo de embeddings | Rechazado | Permitido, y el run queda `failed` |
+| Herramienta inexistente o retirada | Rechazada | Rechazada: el runtime no la ejecutaría |
+
+El error enumera todos los problemas de una vez. Como cada `PATCH` valida la spec completa, un agente
+cuyo modelo fue retirado no acepta ediciones hasta que el mismo `PATCH` elija otro modelo.
+
+### Limitaciones actuales
+
+- **Ningún endpoint cambia el estado.** Todos los agentes quedan en `draft`; publicar llega en la fase 9.
+- **`PATCH` solo edita la spec.** El nombre, la descripción, el área y el creador no se pueden cambiar.
+- **`knowledge_base_id` no se valida** contra una base existente; las bases llegan en la fase 7.
+- **`designer_justification` queda nulo** y `kind` siempre es `user`; el Builder los usará en la fase 8.
+- **Si falla la escritura de la traza** después de crear el agente, la respuesta es 500 pero el agente
+  ya existe. Reintentar crearía otro.
+
+### Pruebas de esta fase
+
+La validación y los routers corren en cada `uv run pytest`, también en CI. El registro y su SQL usan
+Postgres, así que requieren `INTEGRATION_DATABASE_URL` (ver la base desechable en la fase 4):
+
+```bash
+INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/agents
+```
