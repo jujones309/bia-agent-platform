@@ -6,12 +6,13 @@ import pytest
 from bia.agents.artifacts import AgentSpec, AgentSpecPatch
 from bia.agents.validation import (
     InvalidAgentSpecError,
+    find_knowledge_problems,
     find_model_problems,
     find_tool_problems,
     merge_spec_patch,
 )
 from bia.catalog.models.artifacts import CatalogModel, ModelSize
-from bia.catalog.tools.artifacts import CatalogTool, RiskLevel
+from bia.catalog.tools.artifacts import CatalogTool, RiskLevel, ToolName
 
 
 def _model(size: ModelSize = ModelSize.SMALL, is_active: bool = True) -> CatalogModel:
@@ -160,3 +161,39 @@ def test_merge_rejects_a_change_that_changes_nothing(sent: dict[str, str]) -> No
 def test_patch_offers_exactly_the_fields_of_a_spec() -> None:
     """Verifies a field added to the spec cannot be forgotten in the patch."""
     assert set(AgentSpecPatch.model_fields) == set(AgentSpec.model_fields)
+
+
+def test_a_spec_without_knowledge_settings_has_no_problems() -> None:
+    """Verifies agents that do not retrieve are unaffected by the knowledge rules."""
+    assert find_knowledge_problems(_spec(), knowledge_base_exists=False) == []
+
+
+def test_a_spec_with_an_existing_base_and_the_tool_has_no_problems() -> None:
+    """Verifies the only valid way of connecting an agent to its knowledge."""
+    spec = _spec(knowledge_base_id=uuid4(), tool_names=[ToolName.BUSCAR_CONOCIMIENTO])
+
+    assert find_knowledge_problems(spec, knowledge_base_exists=True) == []
+
+
+def test_the_tool_without_a_base_is_rejected() -> None:
+    """Verifies an agent cannot be offered a search with nothing to read."""
+    spec = _spec(tool_names=[ToolName.BUSCAR_CONOCIMIENTO])
+
+    assert "needs a knowledge_base_id" in find_knowledge_problems(spec, False)[0]
+
+
+def test_a_base_without_the_tool_is_rejected() -> None:
+    """Verifies a base cannot be silently ignored by an agent that seems to have it."""
+    spec = _spec(knowledge_base_id=uuid4())
+
+    assert "needs the tool" in find_knowledge_problems(spec, knowledge_base_exists=True)[0]
+
+
+def test_a_base_that_does_not_exist_is_named_together_with_other_problems() -> None:
+    """Verifies an invented identifier is a hard error, and one attempt shows everything."""
+    base_id = uuid4()
+
+    problems = find_knowledge_problems(_spec(knowledge_base_id=base_id), False)
+
+    assert str(base_id) in problems[0]
+    assert "needs the tool" in problems[1]

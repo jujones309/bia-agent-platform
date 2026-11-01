@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 from bia.agents.artifacts import AgentSpec, AgentSpecPatch
 from bia.catalog.models.artifacts import CatalogModel, ModelSize
 from bia.catalog.models.repository import list_catalog_models
-from bia.catalog.tools.artifacts import CatalogTool
+from bia.catalog.tools.artifacts import CatalogTool, ToolName
 from bia.catalog.tools.repository import list_catalog_tools
+from bia.rag.repository import KnowledgeBaseNotFoundError, get_knowledge_base
 
 
 class InvalidAgentSpecError(ValueError):
@@ -65,6 +66,53 @@ def find_tool_problems(tool_names: list[str], tools: list[CatalogTool]) -> list[
     return problems
 
 
+def find_knowledge_problems(spec: AgentSpec, knowledge_base_exists: bool) -> list[str]:
+    """Explains why the knowledge settings of a spec do not work together, if so.
+
+    Exists because the tool and the base are useless apart: the tool would have nothing to read,
+    and a base without the tool would silently never be consulted. Used for new versions.
+
+    Args:
+        spec: The spec about to be stored.
+        knowledge_base_exists: Whether the base the spec references exists, if it has one.
+
+    Returns:
+        list[str]: the problems found; empty if the settings are consistent.
+    """
+    uses_tool = ToolName.BUSCAR_CONOCIMIENTO in spec.tool_names
+    base_id = spec.knowledge_base_id
+    if base_id is None and not uses_tool:
+        return []
+    if base_id is None:
+        return [f"The tool '{ToolName.BUSCAR_CONOCIMIENTO}' needs a knowledge_base_id"]
+    problems = [] if knowledge_base_exists else [f"There is no knowledge base with id {base_id}"]
+    if not uses_tool:
+        problems.append(f"A knowledge base needs the tool '{ToolName.BUSCAR_CONOCIMIENTO}'")
+    return problems
+
+
+def _knowledge_base_exists(session: Session, spec: AgentSpec) -> bool:
+    """Checks whether the base a spec references is stored.
+
+    Exists to keep the read apart from the rules of `find_knowledge_problems`; used by
+    `validate_new_spec`.
+
+    Args:
+        session: The open session to read through.
+        spec: The spec about to be stored.
+
+    Returns:
+        bool: whether the base exists; False if the spec references none.
+    """
+    if spec.knowledge_base_id is None:
+        return False
+    try:
+        get_knowledge_base(session, spec.knowledge_base_id)
+    except KnowledgeBaseNotFoundError:
+        return False
+    return True
+
+
 def validate_new_spec(session: Session, spec: AgentSpec) -> None:
     """Rejects a spec that references anything unavailable in the catalogs.
 
@@ -79,11 +127,12 @@ def validate_new_spec(session: Session, spec: AgentSpec) -> None:
         None: the spec is valid if nothing is raised.
 
     Raises:
-        InvalidAgentSpecError: If the model or a tool cannot be used.
+        InvalidAgentSpecError: If the model, a tool or the knowledge base cannot be used.
     """
     problems = [
         *find_model_problems(spec.model_id, list_catalog_models(session, only_active=False)),
         *find_tool_problems(spec.tool_names, list_catalog_tools(session, only_active=False)),
+        *find_knowledge_problems(spec, _knowledge_base_exists(session, spec)),
     ]
     if problems:
         raise InvalidAgentSpecError("; ".join(problems))

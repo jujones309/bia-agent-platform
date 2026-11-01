@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from bia.agents.artifacts import Agent, AgentDetail, AgentDraft, AgentSpecPatch, AgentVersion
 from bia.agents.registry import (
-    EmbeddingModelUnavailableError,
     activate_version,
     add_version,
     create_agent,
@@ -23,6 +22,7 @@ from bia.agents.repository import (
 )
 from bia.agents.validation import InvalidAgentSpecError
 from bia.api.dependencies import get_database_engine, get_session
+from bia.catalog.models.repository import EmbeddingModelUnavailableError
 from bia.providers.base import ProviderError
 
 router = APIRouter(prefix="/agents", tags=["agents"])

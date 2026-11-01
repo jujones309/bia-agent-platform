@@ -16,8 +16,8 @@ from bia.agents.repository import (
     set_active_version,
 )
 from bia.agents.validation import merge_spec_patch, validate_new_spec, validate_rollback_spec
-from bia.catalog.models.artifacts import CatalogModel, ModelSize
-from bia.catalog.models.repository import list_catalog_models
+from bia.catalog.models.artifacts import CatalogModel
+from bia.catalog.models.repository import find_embedding_model
 from bia.database.connection import database_session
 from bia.providers.artifacts import EmbeddingResult
 from bia.providers.cost import compute_cost
@@ -26,34 +26,6 @@ from bia.tracing.artifacts import RunOrigin, RunStepDraft, StepType
 from bia.tracing.recorder import RunRecorder
 
 logger = logging.getLogger(__name__)
-
-
-class EmbeddingModelUnavailableError(LookupError):
-    """Signals that the model catalog has no active embedding model.
-
-    Exists because a new agent cannot be found by duplicate detection without its embedding.
-    Raised by `_find_embedding_model` and translated to a 503 by `bia/api/agents.py`.
-    """
-
-
-def _find_embedding_model(session: Session) -> CatalogModel:
-    """Chooses the catalog model that embeds agent descriptions.
-
-    Exists because model identifiers always come from the catalog; used by `create_agent`.
-
-    Args:
-        session: The open session to read the catalog through.
-
-    Returns:
-        CatalogModel: the first active embedding model, by name.
-
-    Raises:
-        EmbeddingModelUnavailableError: If the catalog has none.
-    """
-    for model in list_catalog_models(session, only_active=True):
-        if model.size is ModelSize.EMBEDDING:
-            return model
-    raise EmbeddingModelUnavailableError("The model catalog has no active embedding model")
 
 
 def _trace_embedding(
@@ -118,7 +90,7 @@ def create_agent(bind: Engine | Connection, draft: AgentDraft) -> AgentDetail:
     """
     with database_session(bind) as session:
         validate_new_spec(session, draft.spec)
-        model = _find_embedding_model(session)
+        model = find_embedding_model(session)
     logger.info("Embedding the description of new agent '%s'", draft.name)
     result = get_provider(model.provider).embed([draft.description], model.provider_model_id)
     with database_session(bind) as session:

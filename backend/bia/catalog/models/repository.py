@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from bia.catalog.models.artifacts import CatalogModel
+from bia.catalog.models.artifacts import CatalogModel, ModelSize
 from bia.database.queries import DatabaseTable, SqlOperation, load_sql
 
 
@@ -12,6 +12,14 @@ class CatalogModelNotFoundError(LookupError):
 
     Exists so consumers can tell a wrong reference from a database failure. Raised by
     `get_catalog_model` and translated to a 404 by `bia/api/catalog/models.py`.
+    """
+
+
+class EmbeddingModelUnavailableError(LookupError):
+    """Signals that the model catalog has no active embedding model.
+
+    Exists because neither agent descriptions nor knowledge can be embedded without one. Raised
+    by `find_embedding_model` and translated to a 503 by `bia/api/`.
     """
 
 
@@ -54,3 +62,24 @@ def get_catalog_model(session: Session, model_id: UUID) -> CatalogModel:
     if row is None:
         raise CatalogModelNotFoundError(f"The model catalog has no entry with id {model_id}")
     return CatalogModel.model_validate(dict(row))
+
+
+def find_embedding_model(session: Session) -> CatalogModel:
+    """Chooses the catalog model that generates embeddings.
+
+    Exists because model identifiers always come from the catalog; used by the agent registry
+    and by the RAG ingestion and search.
+
+    Args:
+        session: The open session to read the catalog through.
+
+    Returns:
+        CatalogModel: the first active embedding model, by name.
+
+    Raises:
+        EmbeddingModelUnavailableError: If the catalog has none.
+    """
+    for model in list_catalog_models(session, only_active=True):
+        if model.size is ModelSize.EMBEDDING:
+            return model
+    raise EmbeddingModelUnavailableError("The model catalog has no active embedding model")

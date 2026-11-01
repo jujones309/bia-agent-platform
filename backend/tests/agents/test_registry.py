@@ -7,7 +7,6 @@ from sqlalchemy import Connection, Engine, Uuid, column, select, table, update
 from bia.agents import registry as registry_module
 from bia.agents.artifacts import AgentDraft, AgentKind, AgentSpec, AgentSpecPatch, AgentStatus
 from bia.agents.registry import (
-    EmbeddingModelUnavailableError,
     activate_version,
     add_version,
     create_agent,
@@ -20,10 +19,13 @@ from bia.agents.repository import (
     list_versions,
 )
 from bia.agents.validation import InvalidAgentSpecError
+from bia.catalog.models.repository import EmbeddingModelUnavailableError
 from bia.catalog.tools.sync import sync_tools
 from bia.database.connection import database_session
 from bia.database.migrate import apply_schema, apply_seeds
 from bia.providers.base import ProviderError
+from bia.rag.artifacts import KnowledgeBaseDraft
+from bia.rag.repository import insert_knowledge_base
 from bia.runtime.execution import load_agent_execution
 from bia.tracing.artifacts import RunOrigin, RunStatus, StepType
 from bia.tracing.repository import list_runs
@@ -357,6 +359,39 @@ def test_rollback_allows_a_version_whose_model_was_retired(
         detail = activate_version(session, agent_id, 1)
 
     assert detail.active_version.spec.model_id == old_model_id
+
+
+def test_a_spec_with_a_real_base_and_the_tool_is_accepted_and_cannot_lose_the_base(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies on real SQL that a stored base passes, and detaching it alone is rejected."""
+    with database_session(connection) as session:
+        draft = KnowledgeBaseDraft(name="Facturación", description="Tarifas")
+        base_id = insert_knowledge_base(session, draft).id
+    agent_id = _new_agent(connection)
+
+    with database_session(connection) as session:
+        changes = {"tool_names": ["buscar_conocimiento"], "knowledge_base_id": base_id}
+        detail = add_version(session, agent_id, AgentSpecPatch(**changes))
+        with pytest.raises(InvalidAgentSpecError, match="needs a knowledge_base_id"):
+            add_version(session, agent_id, AgentSpecPatch(knowledge_base_id=None))
+
+    assert detail.active_version.spec.knowledge_base_id == base_id
+
+
+def test_a_spec_with_an_unknown_base_is_rejected(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies the reference is checked against the real table."""
+    agent_id = _new_agent(connection)
+    missing_id = uuid4()
+    changes = {"tool_names": ["buscar_conocimiento"], "knowledge_base_id": missing_id}
+
+    with (
+        database_session(connection) as session,
+        pytest.raises(InvalidAgentSpecError, match=str(missing_id)),
+    ):
+        add_version(session, agent_id, AgentSpecPatch(**changes))
 
 
 class _FailingEmbed:

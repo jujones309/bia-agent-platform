@@ -50,6 +50,8 @@ class SqlOperation(StrEnum):
     SET_ACTIVE_VERSION = "set_active_version"
     LIST_BY_AGENT = "list_by_agent"
     GET_BY_NUMBER = "get_by_number"
+    DELETE_BY_DOCUMENT = "delete_by_document"
+    SEARCH_BY_EMBEDDING = "search_by_embedding"
 
 
 class SqlFileNotFoundError(FileNotFoundError):

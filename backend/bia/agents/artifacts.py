@@ -46,7 +46,7 @@ class AgentSpec(BaseModel):
     system_prompt: str = Field(min_length=1)
     model_id: UUID  # entry of the model catalog
     tool_names: list[str] = Field(default_factory=list)  # entries of the tool catalog
-    knowledge_base_id: UUID | None = None  # not read by the runtime until phase 7 adds retrieval
+    knowledge_base_id: UUID | None = None  # the only base `buscar_conocimiento` can read
     guardrails: list[str] = Field(default_factory=list)
     max_iterations: int = Field(default=_DEFAULT_MAX_ITERATIONS, ge=1, le=_ITERATIONS_CEILING)
 

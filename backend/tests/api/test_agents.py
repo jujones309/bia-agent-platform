@@ -13,7 +13,6 @@ from bia.agents.artifacts import (
     AgentStatus,
     AgentVersion,
 )
-from bia.agents.registry import EmbeddingModelUnavailableError
 from bia.agents.repository import (
     ActiveVersionNotFoundError,
     AgentNotFoundError,
@@ -23,6 +22,7 @@ from bia.agents.validation import InvalidAgentSpecError
 from bia.api import agents as agents_router
 from bia.api.dependencies import get_database_engine, get_session
 from bia.api.main import app
+from bia.catalog.models.repository import EmbeddingModelUnavailableError
 from bia.providers.base import ProviderError
 
 
