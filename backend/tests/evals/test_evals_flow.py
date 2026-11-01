@@ -49,11 +49,11 @@ from bia.evals.repository import EvalCaseNotFoundError, list_cases
 from bia.evals.runner import NoEvalCasesError, run_evals
 from bia.inventory.repository import list_orchestration_inventory
 from bia.providers.base import ProviderError
-from bia.runtime.runner import run_agent
 from bia.tracing.artifacts import RunOrigin, RunStatus
 from bia.tracing.repository import list_runs
 from tests.builder.duplicates.seed import hide_published_agents
 from tests.providers.fake import FakeModelProvider
+from tests.runtime.helpers import run_once
 
 _EMBEDDING_DIMENSIONS = 1536
 _RESULTS = table("eval_results", column("eval_case_id", Uuid))
@@ -452,10 +452,9 @@ def test_system_agents_cannot_be_published_or_evaluated(
 
 
 def test_monitor_judges_recent_runs_of_the_origin_against_their_spec(
-    connection: Connection, provider: FakeModelProvider, monkeypatch: pytest.MonkeyPatch
+    connection: Connection, provider: FakeModelProvider
 ) -> None:
     """Verifies only the requested origin is sampled, the newest first, under its version's spec."""
-    monkeypatch.setattr("bia.runtime.runner.get_provider", lambda _name: provider)
     agent_id = _new_agent(connection)
     for input_text, origin in [
         ("Vieja", RunOrigin.PRODUCTION),
@@ -463,7 +462,7 @@ def test_monitor_judges_recent_runs_of_the_origin_against_their_spec(
         ("Prueba", RunOrigin.PLAYGROUND),
     ]:
         provider.queue_text("Respuesta")
-        run_agent(connection, agent_id, input_text, origin)
+        run_once(connection, provider, agent_id, input_text, origin)
     provider.queue_structured(_FAIL)
 
     report = monitor_agent(connection, agent_id, RunOrigin.PRODUCTION, sample_size=1)
@@ -477,13 +476,12 @@ def test_monitor_judges_recent_runs_of_the_origin_against_their_spec(
 
 
 def test_monitor_ignores_runs_without_an_answer(
-    connection: Connection, provider: FakeModelProvider, monkeypatch: pytest.MonkeyPatch
+    connection: Connection, provider: FakeModelProvider
 ) -> None:
     """Verifies nothing is paid for judging a failed run; the fake has no judge answer."""
-    monkeypatch.setattr("bia.runtime.runner.get_provider", lambda _name: provider)
     agent_id = _new_agent(connection)
     provider.queue_chat_error(ProviderError("timeout"))
-    run_agent(connection, agent_id, "Pregunta", RunOrigin.PRODUCTION)
+    run_once(connection, provider, agent_id, "Pregunta", RunOrigin.PRODUCTION)
 
     report = monitor_agent(connection, agent_id, RunOrigin.PRODUCTION, sample_size=5)
 

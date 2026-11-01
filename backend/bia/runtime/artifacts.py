@@ -12,6 +12,7 @@ class AgentRunRequest(BaseModel):
     """
 
     input: str = Field(min_length=1)
+    run_id: UUID | None = None  # the open conversation to continue; None starts a new one
 
 
 class AgentRunResult(BaseModel):
@@ -23,5 +24,5 @@ class AgentRunResult(BaseModel):
 
     run_id: UUID
     status: RunStatus
-    output: str | None  # None when the run failed
-    error: str | None  # None when the run succeeded
+    output: str | None  # None when there is no answer
+    error: str | None  # why there is no answer; a run can stay open after a turn that failed

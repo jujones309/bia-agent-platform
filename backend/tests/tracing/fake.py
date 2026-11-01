@@ -68,6 +68,23 @@ class FakeRunRecorder(RunRecorder):
             **step.model_dump(),
         )
 
+    def record_turn(self, run_id: UUID, output: str | None) -> RunRecord:
+        """Updates the kept run after a turn, leaving it open.
+
+        Args:
+            run_id: The open conversation.
+            output: The answer of the turn, or None to keep the previous one.
+
+        Returns:
+            RunRecord: the run, still open.
+
+        Raises:
+            AssertionError: If the code under test writes to a closed run.
+        """
+        assert self.run is not None and self.run.status is RunStatus.RUNNING, "Run is closed"
+        self.run = self.run.model_copy(update={"output": output or self.run.output})
+        return self.run
+
     def _close_run(
         self, run_id: UUID, status: RunStatus, output: str | None, error: str | None
     ) -> RunRecord:

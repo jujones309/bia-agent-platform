@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, getAgentMetrics, listRuns, patchAgent, publishAgent, retireEvalCase, runAgent, verifyPassword } from "@/lib/api/client";
+import { ApiError, finishRun, getAgentMetrics, listRuns, patchAgent, publishAgent, retireEvalCase, runAgent, verifyPassword } from "@/lib/api/client";
 import { readPassword, writePassword } from "@/lib/api/credentials";
 import { RunOrigin } from "@/lib/api/types";
 
@@ -18,6 +18,20 @@ beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   writePassword("the-shared-password");
+});
+
+describe("conversations", () => {
+  it("names the open run when continuing and finishes it by its own path", async () => {
+    respond(200, { run_id: "run-1" });
+
+    await runAgent("agent-1", "Sigue", "run-1");
+    expect(JSON.parse(lastRequest().init.body as string)).toEqual({ input: "Sigue", run_id: "run-1" });
+
+    respond(200, { id: "run-1" });
+    await finishRun("run-1");
+    expect(lastRequest().url).toBe("http://backend.test/runs/run-1/finish");
+    expect(lastRequest().init.method).toBe("POST");
+  });
 });
 
 describe("request", () => {

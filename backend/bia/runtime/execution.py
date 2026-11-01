@@ -72,7 +72,25 @@ def load_agent_execution(session: Session, agent_id: UUID) -> AgentExecution:
         ActiveVersionNotFoundError: If the agent does not exist or has no active version.
         AgentConfigurationError: If the spec references an unavailable model or tool.
     """
-    version = get_active_version(session, agent_id)
+    return load_version_execution(session, get_active_version(session, agent_id))
+
+
+def load_version_execution(session: Session, version: AgentVersion) -> AgentExecution:
+    """Resolves the references of a concrete version of an agent.
+
+    Exists so an open conversation can go on with the version it started with; used by
+    `load_agent_execution` and by `bia/runtime/conversations.py`.
+
+    Args:
+        session: The open session to read through.
+        version: The version to execute.
+
+    Returns:
+        AgentExecution: the version with its model and tools.
+
+    Raises:
+        AgentConfigurationError: If the spec references an unavailable model or tool.
+    """
     try:
         model = get_catalog_model(session, version.spec.model_id)
     except CatalogModelNotFoundError as error:

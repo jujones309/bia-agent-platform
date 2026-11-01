@@ -343,10 +343,22 @@ export function publishAgent(agentId: string): Promise<AgentDetail> {
  *
  * @param agentId - The agent to execute.
  * @param input - The message of the person.
+ * @param runId - The open conversation to continue; without it, a new one starts.
  * @returns The answer, or the reason there is none, with the run that traces it.
  */
-export function runAgent(agentId: string, input: string): Promise<AgentRunResult> {
-  return request(HttpMethod.POST, `/agents/${agentId}/run`, { input });
+export function runAgent(agentId: string, input: string, runId: string | null = null): Promise<AgentRunResult> {
+  return request(HttpMethod.POST, `/agents/${agentId}/run`, runId ? { input, run_id: runId } : { input });
+}
+
+/**
+ * Calls `POST /runs/{id}/finish`.
+ *
+ * @param runId - The open conversation to finish.
+ * @returns The closed run.
+ * @throws ApiError with status 409 if the run is not an open conversation.
+ */
+export function finishRun(runId: string): Promise<RunRecord> {
+  return request(HttpMethod.POST, `/runs/${runId}/finish`);
 }
 
 /**

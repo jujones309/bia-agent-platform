@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import sentinel
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -13,6 +13,7 @@ from bia.providers.artifacts import MessageRole, ProviderName, ToolCall
 from bia.providers.base import ProviderError
 from bia.runtime import tools as runtime_tools
 from bia.runtime.execution import AgentExecution
+from bia.runtime.messages import build_initial_messages
 from bia.runtime.runner import AgentRunner
 from bia.tracing.artifacts import RunOrigin, RunStatus, StepType
 from tests.providers.fake import FakeModelProvider
@@ -291,3 +292,80 @@ def test_a_tool_decides_its_step_type_and_its_model_spend_reaches_the_trace(
     assert step.tool_id == execution.tools[0].id
     assert tool.contexts[0].knowledge_base_id == base_id
     assert tool.contexts[0].bind is sentinel.bind
+
+
+def _open_run(recorder: FakeRunRecorder, execution: AgentExecution) -> UUID:
+    """Opens a conversation in the fake recorder.
+
+    Args:
+        recorder: The fake recorder.
+        execution: The execution of the conversation.
+
+    Returns:
+        UUID: the identifier of the open run.
+    """
+    version = execution.version
+    return recorder.start_run(version.agent_id, version.id, RunOrigin.PLAYGROUND, "hola").id
+
+
+def test_turn_with_an_answer_leaves_the_run_open(
+    provider: FakeModelProvider, recorder: FakeRunRecorder
+) -> None:
+    """Verifies an answer does not end a conversation, and that it is kept in the run."""
+    execution = _execution()
+    run_id = _open_run(recorder, execution)
+    provider.queue_text("Hola")
+    messages = build_initial_messages(execution.version.spec, "hola")
+
+    result = AgentRunner(recorder, provider, sentinel.bind).run_turn(run_id, execution, messages)
+
+    assert (result.status, result.output) == (RunStatus.RUNNING, "Hola")
+    assert (recorder.run.status, recorder.run.output) == (RunStatus.RUNNING, "Hola")
+
+
+def test_turn_with_a_provider_failure_keeps_the_conversation_and_its_last_answer(
+    provider: FakeModelProvider, recorder: FakeRunRecorder
+) -> None:
+    """Verifies a failed turn reports why, without losing what the conversation had."""
+    execution = _execution()
+    run_id = _open_run(recorder, execution)
+    runner = AgentRunner(recorder, provider, sentinel.bind)
+    spec = execution.version.spec
+    provider.queue_text("Hola")
+    runner.run_turn(run_id, execution, build_initial_messages(spec, "uno"))
+    provider.queue_chat_error(ProviderError("timeout"))
+
+    result = runner.run_turn(run_id, execution, build_initial_messages(spec, "dos"))
+
+    assert (result.status, result.output) == (RunStatus.RUNNING, None)
+    assert "timeout" in result.error
+    assert (recorder.run.status, recorder.run.output) == (RunStatus.RUNNING, "Hola")
+
+
+def test_turn_reaching_the_iteration_limit_leaves_the_run_open(
+    provider: FakeModelProvider, recorder: FakeRunRecorder
+) -> None:
+    """Verifies the limit applies to each turn and is not the end of the conversation."""
+    execution = _execution(1)
+    run_id = _open_run(recorder, execution)
+    provider.queue_tool_calls([_tool_call()])
+    messages = build_initial_messages(execution.version.spec, "saldo")
+
+    result = AgentRunner(recorder, provider, sentinel.bind).run_turn(run_id, execution, messages)
+
+    assert result.status is RunStatus.RUNNING
+    assert "limit of 1 iterations" in result.error
+
+
+def test_turn_with_an_unexpected_error_closes_the_run_and_propagates(
+    provider: FakeModelProvider, recorder: FakeRunRecorder
+) -> None:
+    """Verifies a bug surfaces and leaves no conversation open behind it."""
+    execution = _execution()
+    run_id = _open_run(recorder, execution)
+    messages = build_initial_messages(execution.version.spec, "hola")
+
+    with pytest.raises(AssertionError):  # the fake provider has nothing scripted
+        AgentRunner(recorder, provider, sentinel.bind).run_turn(run_id, execution, messages)
+
+    assert recorder.run.status is RunStatus.FAILED

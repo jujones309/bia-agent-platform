@@ -224,3 +224,59 @@ def test_writes_to_an_unknown_run_fail_clearly(recorder: RunRecorder) -> None:
         recorder.add_step(missing_id, _tool_step())
     with pytest.raises(RunNotRunningError, match=str(missing_id)):
         recorder.finish_run(missing_id, "x")
+
+
+def test_record_turn_exposes_answer_and_spending_while_the_run_stays_open(
+    connection: Connection, recorder: RunRecorder, open_run: RunRecord
+) -> None:
+    """Verifies an abandoned conversation still reports what it answered and cost."""
+    model_id = insert_model(connection)
+    recorder.add_step(open_run.id, _llm_step(model_id, 10, 5, "0.001"))
+    answered = recorder.record_turn(open_run.id, "Tu saldo es 100")
+    recorder.add_step(open_run.id, _llm_step(model_id, 10, 5, "0.001"))
+
+    unanswered = recorder.record_turn(open_run.id, None)
+
+    assert answered.status is RunStatus.RUNNING
+    assert unanswered.output == "Tu saldo es 100"
+    assert (answered.total_tokens, unanswered.total_tokens) == (15, 30)
+    assert unanswered.total_cost == Decimal("0.002")
+    assert unanswered.finished_at is None
+
+
+def test_finish_conversation_counts_the_time_of_the_steps_and_not_the_waiting(
+    connection: Connection, recorder: RunRecorder, open_run: RunRecord
+) -> None:
+    """Verifies the time a person takes to reply does not inflate the latency of the agent."""
+    recorder.add_step(open_run.id, _tool_step())
+    recorder.record_turn(open_run.id, "Listo")
+    time.sleep(0.05)
+
+    closed = recorder.finish_conversation(open_run.id)
+
+    assert closed.status is RunStatus.SUCCEEDED
+    assert closed.error is None
+    assert closed.output == "Listo"
+    assert closed.latency_ms == closed.steps[0].latency_ms < 50
+
+
+def test_finish_conversation_without_any_answer_fails_the_run(
+    recorder: RunRecorder, open_run: RunRecord
+) -> None:
+    """Verifies a conversation that never got an answer counts as a failure in the metrics."""
+    closed = recorder.finish_conversation(open_run.id)
+
+    assert closed.status is RunStatus.FAILED
+    assert "without any answer" in closed.error
+
+
+def test_a_finished_conversation_accepts_no_more_writes(
+    recorder: RunRecorder, open_run: RunRecord
+) -> None:
+    """Verifies a closed audit record cannot change, not even through a late turn."""
+    recorder.finish_conversation(open_run.id)
+
+    with pytest.raises(RunNotRunningError):
+        recorder.record_turn(open_run.id, "tarde")
+    with pytest.raises(RunNotRunningError):
+        recorder.finish_conversation(open_run.id)

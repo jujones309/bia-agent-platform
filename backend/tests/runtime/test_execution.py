@@ -15,12 +15,11 @@ from bia.rag import ingestion, retrieval
 from bia.rag.artifacts import DocumentDraft, DocumentType, KnowledgeBaseDraft
 from bia.rag.ingestion import ingest_document
 from bia.rag.repository import insert_knowledge_base
-from bia.runtime import runner as runner_module
 from bia.runtime.execution import AgentConfigurationError, load_agent_execution
-from bia.runtime.runner import run_agent
 from bia.tracing.artifacts import RunOrigin, RunStatus, StepType
 from bia.tracing.repository import list_runs
 from tests.providers.fake import FakeModelProvider
+from tests.runtime.helpers import run_once
 from tests.tracing.seed import insert_active_version, insert_agent, insert_model
 
 
@@ -98,17 +97,14 @@ def test_load_rejects_references_that_are_not_available(connection: Connection) 
             load_agent_execution(session, with_missing_model)
 
 
-def test_run_agent_leaves_the_complete_trace_in_the_database(
-    connection: Connection, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_run_leaves_the_complete_trace_in_the_database(connection: Connection) -> None:
     """Verifies the whole path on real SQL: steps, summed totals and the tool's reference."""
     agent_id = _new_agent(connection, insert_model(connection), ["consultar_factura"])
     provider = FakeModelProvider()
     provider.queue_tool_calls([_tool_call('{"numero_cliente": "100001"}')])
     provider.queue_text("Listo")
-    monkeypatch.setattr(runner_module, "get_provider", lambda _name: provider)
 
-    result = run_agent(connection, agent_id, "saldo", RunOrigin.PLAYGROUND)
+    result = run_once(connection, provider, agent_id, "saldo", RunOrigin.PLAYGROUND)
 
     with database_session(connection) as session:
         run = list_runs(session, agent_id, limit=1)[0]
@@ -119,9 +115,7 @@ def test_run_agent_leaves_the_complete_trace_in_the_database(
     assert run.steps[1].tool_id is not None
 
 
-def test_run_agent_stores_the_reason_of_a_failure(
-    connection: Connection, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_run_stores_the_reason_of_a_failure(connection: Connection) -> None:
     """Verifies a run that reached its limit is closed with the reason, on real SQL."""
     agent_id = insert_agent(connection)
     spec = AgentSpec(
@@ -134,9 +128,8 @@ def test_run_agent_stores_the_reason_of_a_failure(
     insert_active_version(connection, agent_id, spec.model_dump_json())
     provider = FakeModelProvider()
     provider.queue_tool_calls([_tool_call("{}")])
-    monkeypatch.setattr(runner_module, "get_provider", lambda _name: provider)
 
-    run_agent(connection, agent_id, "saldo", RunOrigin.EVAL)
+    run_once(connection, provider, agent_id, "saldo", RunOrigin.EVAL)
 
     with database_session(connection) as session:
         run = list_runs(session, agent_id, limit=1)[0]
@@ -195,9 +188,10 @@ def test_retrieval_reads_only_the_base_of_the_spec_and_leaves_its_step_in_the_tr
         ]
     )
     chat.queue_text("El estrato 1 paga 412, según Propia.")
-    monkeypatch.setattr(runner_module, "get_provider", lambda _name: chat)
 
-    result = run_agent(connection, agent_id, "¿Cuánto paga el estrato 1?", RunOrigin.PLAYGROUND)
+    result = run_once(
+        connection, chat, agent_id, "¿Cuánto paga el estrato 1?", RunOrigin.PLAYGROUND
+    )
 
     with database_session(connection) as session:
         run = list_runs(session, agent_id, limit=1)[0]

@@ -5,13 +5,11 @@ from uuid import UUID
 from sqlalchemy import Connection, Engine
 
 from bia.catalog.tools.base import ToolContext
-from bia.database.connection import database_session
 from bia.providers.artifacts import ChatMessage, ToolCall
 from bia.providers.base import ModelProvider, ProviderError
 from bia.providers.cost import compute_cost
-from bia.providers.factory import get_provider
 from bia.runtime.artifacts import AgentRunResult
-from bia.runtime.execution import AgentExecution, load_agent_execution
+from bia.runtime.execution import AgentExecution
 from bia.runtime.messages import build_initial_messages
 from bia.runtime.tools import ToolExecutor, to_tool_message
 from bia.tracing.artifacts import RunOrigin, RunRecord, RunStepDraft, StepType
@@ -20,6 +18,14 @@ from bia.tracing.recorder import RunRecorder
 logger = logging.getLogger(__name__)
 
 _MILLISECONDS_PER_SECOND = 1000
+
+
+class IterationLimitError(RuntimeError):
+    """Signals that the loop reached the iteration limit of a spec without an answer.
+
+    Exists so each kind of execution decides what that means for its run; raised by
+    `AgentRunner._run_loop` and handled by `AgentRunner.run` and `AgentRunner.run_turn`.
+    """
 
 
 def elapsed_ms(started_at: float) -> int:
@@ -66,7 +72,7 @@ class AgentRunner:
 
     Exists so agents are configuration and only one piece of code runs them. It guarantees
     that every run ends closed, whatever happens, and that each model call and tool call is
-    recorded. Consumed through `run_agent` by the playground and, later, by the evals.
+    recorded. Consumed by `bia/runtime/conversations.py` for the playground and by the evals.
     """
 
     def __init__(
@@ -86,8 +92,9 @@ class AgentRunner:
     def run(self, execution: AgentExecution, input_text: str, origin: RunOrigin) -> AgentRunResult:
         """Executes an agent from start to finish, leaving its run closed.
 
-        Exists as the public entrypoint of the loop. A provider failure is a normal outcome
-        reported in the result. Anything else is a bug: the run is closed and it propagates.
+        Exists as the entrypoint of executions with a single input, such as the evals. A provider
+        failure is a normal outcome reported in the result. Anything else is a bug: the run is
+        closed and it propagates.
 
         Args:
             execution: The version to execute, with its model and tools.
@@ -99,45 +106,91 @@ class AgentRunner:
         """
         version = execution.version
         run = self._recorder.start_run(version.agent_id, version.id, origin, input_text)
+        messages = build_initial_messages(version.spec, input_text)
         try:
-            return _to_result(self._run_loop(run.id, execution, input_text))
-        except ProviderError as error:
-            logger.warning("Run %s failed on a provider call: %s", run.id, error)
+            output = self._run_loop(run.id, execution, messages)
+            return _to_result(self._recorder.finish_run(run.id, output))
+        except (ProviderError, IterationLimitError) as error:
+            logger.warning("Run %s failed: %s", run.id, error)
             return _to_result(self._recorder.fail_run(run.id, str(error)))
         except Exception as error:
-            logger.exception("Run %s crashed", run.id)
-            self._recorder.fail_run(run.id, f"{type(error).__name__}: {error}")
+            self._fail_crashed_run(run.id, error)
             raise
 
-    def _run_loop(self, run_id: UUID, execution: AgentExecution, input_text: str) -> RunRecord:
+    def run_turn(
+        self, run_id: UUID, execution: AgentExecution, messages: list[ChatMessage]
+    ) -> AgentRunResult:
+        """Executes one turn of a conversation, leaving its run open.
+
+        Exists because a conversation outlives each answer. A turn without an answer does not end
+        it: the person can try again, and the error step stays in the trace. Anything else is a
+        bug: the run is closed and it propagates. Used by `bia/runtime/conversations.py`.
+
+        Args:
+            run_id: The open run of the conversation.
+            execution: The version the conversation executes, with its model and tools.
+            messages: The conversation so far, ending with the new user message.
+
+        Returns:
+            AgentRunResult: the answer of the turn, or why there is none, with the run identifier.
+        """
+        try:
+            output = self._run_loop(run_id, execution, messages)
+            return _to_result(self._recorder.record_turn(run_id, output))
+        except (ProviderError, IterationLimitError) as error:
+            logger.warning("Run %s had a turn without an answer: %s", run_id, error)
+            run = self._recorder.record_turn(run_id, None)
+            return AgentRunResult(run_id=run.id, status=run.status, output=None, error=str(error))
+        except Exception as error:
+            self._fail_crashed_run(run_id, error)
+            raise
+
+    def _fail_crashed_run(self, run_id: UUID, error: Exception) -> None:
+        """Closes a run after an unexpected error, for the caller to let it propagate.
+
+        Exists so no run stays open because of a bug; used by `run` and `run_turn`.
+
+        Args:
+            run_id: The open run.
+            error: The unexpected error.
+
+        Returns:
+            None: the run ends up closed as failed.
+        """
+        logger.exception("Run %s crashed", run_id)
+        self._recorder.fail_run(run_id, f"{type(error).__name__}: {error}")
+
+    def _run_loop(
+        self, run_id: UUID, execution: AgentExecution, messages: list[ChatMessage]
+    ) -> str:
         """Alternates model calls and tool calls until an answer or the iteration limit.
 
-        Exists to keep the loop apart from the guarantees of `run`.
+        Exists to keep the loop apart from how each kind of execution ends its run.
 
         Args:
             run_id: The open run.
             execution: The version to execute, with its model and tools.
-            input_text: What the user asked.
+            messages: The conversation so far; it grows as the loop advances.
 
         Returns:
-            RunRecord: the closed run.
+            str: the answer of the model.
 
         Raises:
             ProviderError: If a model call fails.
+            IterationLimitError: If the limit is reached without an answer.
         """
         spec = execution.version.spec
-        messages = build_initial_messages(spec, input_text)
         context = ToolContext(bind=self._bind, knowledge_base_id=spec.knowledge_base_id)
         executor = ToolExecutor(execution.tools, context)
         for _ in range(spec.max_iterations):
             reply = self._call_model(run_id, execution, messages, executor)
             messages.append(reply)
             if not reply.tool_calls:
-                return self._recorder.finish_run(run_id, reply.content)
+                return reply.content
             for tool_call in reply.tool_calls:
                 messages.append(self._call_tool(run_id, executor, tool_call))
-        return self._recorder.fail_run(
-            run_id, f"Reached the limit of {spec.max_iterations} iterations without an answer"
+        raise IterationLimitError(
+            f"Reached the limit of {spec.max_iterations} iterations without an answer"
         )
 
     def _call_model(
@@ -226,31 +279,3 @@ class AgentRunner:
             ),
         )
         return to_tool_message(tool_call, result)
-
-
-def run_agent(
-    bind: Engine | Connection, agent_id: UUID, input_text: str, origin: RunOrigin
-) -> AgentRunResult:
-    """Executes the active version of an agent.
-
-    Exists as the entrypoint for callers that only know an agent's identifier. Reads happen
-    in their own short transaction, so no connection stays open during the LLM calls. Used
-    by the playground endpoint.
-
-    Args:
-        bind: The database handle to read and trace through.
-        agent_id: The agent to execute.
-        input_text: What the user asked.
-        origin: What triggered the execution.
-
-    Returns:
-        AgentRunResult: the answer, or why there is none, with the run identifier.
-
-    Raises:
-        ActiveVersionNotFoundError: If the agent does not exist or has no active version.
-        AgentConfigurationError: If the spec references an unavailable model or tool.
-    """
-    with database_session(bind) as session:
-        execution = load_agent_execution(session, agent_id)
-    runner = AgentRunner(RunRecorder(bind), get_provider(execution.model.provider), bind)
-    return runner.run(execution, input_text, origin)

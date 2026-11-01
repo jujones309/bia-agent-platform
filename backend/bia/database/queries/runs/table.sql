@@ -9,9 +9,9 @@ CREATE TABLE IF NOT EXISTS runs (
     agent_version_id uuid NOT NULL REFERENCES agent_versions (id),
     -- text: what triggered the run.
     origin text NOT NULL,
-    -- text: input received.
+    -- text: input received; in a conversation, its first message.
     input text NOT NULL,
-    -- text: final answer; null while running or if it failed.
+    -- text: final answer; in a conversation, the latest one, updated after each turn. Null if none yet.
     output text,
     -- text: execution state.
     status text NOT NULL,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS runs (
     total_tokens integer NOT NULL DEFAULT 0,
     -- numeric: sum in USD of the cost of its steps.
     total_cost numeric(14, 8) NOT NULL DEFAULT 0,
-    -- integer: total duration in milliseconds; null until finished.
+    -- integer: total duration in milliseconds; in a conversation, the sum of its steps. Null until finished.
     latency_ms integer,
     -- timestamptz: when the run started.
     started_at timestamptz NOT NULL DEFAULT now(),

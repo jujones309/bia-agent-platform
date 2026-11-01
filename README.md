@@ -56,6 +56,7 @@ frontend con la [guía de la fase 12](#guía-fase-12--frontend).
 | 13 | Documento de arquitectura | Terminada |
 | 14 | Entrega | En curso: faltan el video y las invitaciones |
 | Mejoras, bloque 3 | Administración desde la interfaz | Terminado en la rama, sin desplegar |
+| Mejoras, tarea 4.2 | Memoria de conversación | Terminada en la rama, sin desplegar |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
 el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime,
@@ -486,10 +487,10 @@ curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/<id>/run \
 
 | Respuesta | Cuándo |
 |---|---|
-| 200, `status: succeeded` | Hay respuesta en `output`. |
-| 200, `status: failed` | El run se ejecutó pero falló, con el motivo en `error`: falló el proveedor o se llegó al tope de iteraciones. |
-| 404 | El agente no existe o no tiene versión activa. |
-| 409 | La spec apunta a un modelo inexistente, o a una herramienta inexistente o retirada. No se gasta ningún token. |
+| 200, `status: running` con `output` | Hay respuesta. El run sigue abierto para más mensajes (ver la guía de la tarea 4.2 de mejoras). |
+| 200, `status: running` con `error` | Este mensaje no obtuvo respuesta: falló el proveedor o se llegó al tope de iteraciones. El run sigue abierto y se puede reintentar. |
+| 404 | El agente o el run no existen, o el agente no tiene versión activa. |
+| 409 | La spec apunta a un modelo inexistente, o a una herramienta inexistente o retirada, sin gastar tokens; o el `run_id` no es una conversación abierta de ese agente. |
 | 500 | Un error inesperado. El run queda cerrado como `failed`, salvo que la base sea lo que falló. |
 
 Toda respuesta 200 trae `run_id`; la traza se consulta en `GET /runs?agent_id=<id>`.
@@ -523,7 +524,7 @@ Para crear un agente que ejecutar, ver la guía de la fase 6. La spec es un JSON
   pueda corregir. El paso queda con `error` y el run sigue.
 - **Caídas de una herramienta**: el modelo y la traza reciben un mensaje genérico, para no exponer
   detalles internos. El detalle queda en los logs.
-- **Fallos del proveedor**: quedan como paso con `error` y terminan el run como `failed`.
+- **Fallos del proveedor**: quedan como paso con `error`. Terminan como `failed` los runs de una sola entrada, como los de evals; una conversación sigue abierta.
 - **Conexiones**: las lecturas usan una transacción corta y cada traza la suya, para no retener una
   conexión del pooler durante las llamadas al modelo.
 
@@ -1215,7 +1216,7 @@ CI corre los cuatro en cada push.
 | `/orchestrations` | Ver cada flujo con sus pasos en orden, y retirar los que no son de la plataforma. |
 | `/builder` | Describir la necesidad, confirmar si un agente existente sirve y, si no, proponer uno. |
 | `/builder/{id}` | Ajustar la spec junto a la justificación del diseñador, elegir la base, generar, escribir y retirar casos, correr evals y publicar. |
-| `/agents/{id}/playground` | Hablar con un agente y abrir la traza de cada respuesta. |
+| `/agents/{id}/playground` | Conversar con un agente, finalizar la conversación y abrir su traza. |
 | `/runs` y `/runs/{id}` | Ver los 50 runs más recientes, filtrar por agente y abrir los pasos de cada uno. |
 
 ### Cómo se conecta con el backend
@@ -1263,8 +1264,7 @@ USD 0,028.
 
 ### Limitaciones actuales
 
-- **El playground no tiene memoria.** Cada mensaje es un run independiente, porque `POST /agents/{id}/run` recibe
-  una sola entrada. La página lo dice. Recargarla borra la conversación, no sus trazas.
+- **El playground recuerda solo mientras la conversación siga abierta.** Ver la guía de la tarea 4.2 de mejoras.
 - **Una corrida de evals es una sola petición.** Si recargas la página durante una, el backend sigue pero la pantalla no
   lo muestra; revisa el resultado después. Sigue aplicando el límite de tiempo de la plataforma (ver fases 9 y 10).
 - **La justificación se muestra como la guarda el backend**, con claves en inglés (`model:`, `tools:`).
@@ -1460,3 +1460,64 @@ INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/agents tests/
 ```
 
 La prueba con navegador no quedó en el repo: se hizo una vez y no corre en CI.
+
+## Guía: tarea 4.2 de mejoras — Memoria de conversación
+
+En el playground, **un run es una conversación completa**. El primer mensaje abre el run, los siguientes se agregan a ese
+mismo run con memoria de los anteriores, y sigue abierto (`running`) hasta que alguien lo finaliza. Después de finalizarlo,
+el siguiente mensaje abre un run nuevo, sin esa memoria. Los evals siguen abriendo y cerrando un run por cada caso.
+
+No requiere migración: no cambia el esquema.
+
+### Usarla
+
+En `/agents/{id}/playground`, conversa y pulsa **Finalizar conversación** al terminar. Por API:
+
+```bash
+# El primer mensaje abre el run; guarda el run_id de la respuesta
+curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/$AGENT/run \
+  -H 'Content-Type: application/json' -d '{"input": "¿Cuál es el saldo del cliente 100001?"}'
+
+# Los siguientes lo envían para continuar
+curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/$AGENT/run \
+  -H 'Content-Type: application/json' -d '{"input": "¿Y cuándo vence?", "run_id": "'$RUN'"}'
+
+# Finalizar
+curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/runs/$RUN/finish
+```
+
+`POST /runs/{id}/finish` responde 404 si el run no existe y 409 si no es una conversación abierta. Los runs de otros
+orígenes, como una corrida de evals en curso, no se pueden continuar ni finalizar por esta vía.
+
+### Cómo se comporta
+
+- **La memoria sale de la traza.** Cada llamada al modelo ya guarda lo que recibió, así que el historial se reconstruye desde
+  la última respuesta, con sus llamadas a herramientas. Los mensajes que no obtuvieron respuesta no entran en la memoria.
+- **El run se queda con su versión.** Si el agente activa otra versión, la conversación abierta sigue con la que empezó.
+- **`output` es la última respuesta y `input` el primer mensaje.** Los demás mensajes están en los pasos de la traza.
+- **Tokens y costo se actualizan en cada mensaje**, así que cuentan aunque nadie finalice el run.
+- **Al finalizar**, queda `succeeded` si algún mensaje obtuvo respuesta y `failed` si ninguno la obtuvo.
+- **`latency_ms` suma el tiempo de los pasos**, porque lo que tarda la persona en contestar no es trabajo del agente.
+  También deja fuera lo que ocurre entre pasos, así que no se compara directamente con la de un run de evals.
+- **`max_iterations` aplica a cada mensaje**, no a toda la conversación.
+
+### Limitaciones actuales
+
+- **Una conversación abandonada queda `running` para siempre.** Recargar o cerrar la página pierde el `run_id`, que solo vive
+  en la pantalla, y nada cierra esos runs. Cuentan en `total_runs` y en el costo, pero no en el p50 ni en la tasa de error.
+- **El historial no se recorta.** Cada mensaje envía toda la conversación, así que el costo por mensaje crece, y una conversación
+  muy larga terminará en un error del proveedor al superar el contexto del modelo. Toca finalizarla y empezar otra.
+- **El monitoreo no entiende conversaciones.** `POST /agents/{id}/evals/monitor?origin=playground` juzga el primer mensaje contra
+  la última respuesta, lo que puede dar falsos fallos en runs de varios mensajes. El origen `production` no se ve afectado.
+- **El tope de iteraciones no deja un paso propio** en la conversación: se reconoce porque la traza termina en una herramienta.
+
+### Pruebas de esta tarea
+
+El loop, los routers y las pantallas corren en cada `uv run pytest` y `npm test`. La memoria, el cierre y la versión fija sobre
+SQL real requieren `INTEGRATION_DATABASE_URL`:
+
+```bash
+INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/runtime tests/tracing
+```
+
+Se probó con un provider simulado: no se ha comprobado aún una pregunta de seguimiento contra OpenAI ni en un navegador.

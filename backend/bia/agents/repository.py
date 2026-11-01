@@ -304,6 +304,29 @@ def get_version(session: Session, agent_id: UUID, version_number: int) -> AgentV
     return AgentVersion.model_validate(dict(row))
 
 
+def get_version_by_id(session: Session, version_id: UUID) -> AgentVersion:
+    """Retrieves one version from its identifier.
+
+    Exists so an open conversation can keep executing the version recorded in its run; used by
+    `bia/runtime/conversations.py`.
+
+    Args:
+        session: The open session to read through.
+        version_id: The identifier of the version.
+
+    Returns:
+        AgentVersion: the version.
+
+    Raises:
+        AgentVersionNotFoundError: If no version has that identifier.
+    """
+    sql = load_sql(DatabaseTable.AGENT_VERSIONS, SqlOperation.GET_BY_ID)
+    row = session.execute(text(sql), {"version_id": str(version_id)}).mappings().one_or_none()
+    if row is None:
+        raise AgentVersionNotFoundError(f"There is no version with id {version_id}")
+    return AgentVersion.model_validate(dict(row))
+
+
 def get_active_version(session: Session, agent_id: UUID) -> AgentVersion:
     """Retrieves the version an agent currently executes.
 

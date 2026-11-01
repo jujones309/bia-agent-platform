@@ -18,6 +18,8 @@ from bia.tracing.repository import list_steps_of_runs
 
 logger = logging.getLogger(__name__)
 
+_NO_ANSWER_ERROR = "The conversation was finished without any answer"
+
 
 class RunNotRunningError(LookupError):
     """Signals a write to a run that does not exist or was already closed.
@@ -145,6 +147,58 @@ class RunRecorder:
         """
         return self._close_run(run_id, RunStatus.FAILED, None, error)
 
+    def record_turn(self, run_id: UUID, output: str | None) -> RunRecord:
+        """Updates an open conversation after one of its turns, leaving it open.
+
+        Exists so what a conversation answered and spent is visible while it lasts; called by
+        the runner after each turn.
+
+        Args:
+            run_id: The open conversation.
+            output: The answer of the turn, or None if it got none, which keeps the previous one.
+
+        Returns:
+            RunRecord: the run, still open, without its steps.
+
+        Raises:
+            RunNotRunningError: If the run does not exist or was already closed.
+        """
+        parameters = {
+            "run_id": str(run_id),
+            "output": output,
+            "running_status": RunStatus.RUNNING,
+        }
+        with database_session(self._bind) as session:
+            sql = load_sql(DatabaseTable.RUNS, SqlOperation.RECORD_TURN)
+            row = session.execute(text(sql), parameters).mappings().first()
+        run = RunRecord.model_validate(dict(_require_open_run(row, run_id)))
+        logger.info("Run %s recorded a turn, %d tokens so far", run.id, run.total_tokens)
+        return run
+
+    def finish_conversation(self, run_id: UUID) -> RunRecord:
+        """Closes an open conversation, as succeeded if any of its turns got an answer.
+
+        Exists because a conversation ends when a person says so, not when an answer arrives;
+        called by `bia/runtime/conversations.py`.
+
+        Args:
+            run_id: The conversation to close.
+
+        Returns:
+            RunRecord: the closed run, with its totals and its steps.
+
+        Raises:
+            RunNotRunningError: If the run does not exist or was already closed.
+        """
+        parameters = {
+            "run_id": str(run_id),
+            "running_status": RunStatus.RUNNING,
+            "succeeded_status": RunStatus.SUCCEEDED,
+            "failed_status": RunStatus.FAILED,
+            "no_answer_error": _NO_ANSWER_ERROR,
+        }
+        return self._write_closure(run_id, SqlOperation.FINISH_CONVERSATION, parameters)
+
     def _close_run(
         self, run_id: UUID, status: RunStatus, output: str | None, error: str | None
     ) -> RunRecord:
@@ -171,8 +225,28 @@ class RunRecorder:
             "error": error,
             "running_status": RunStatus.RUNNING,
         }
+        return self._write_closure(run_id, SqlOperation.FINISH, parameters)
+
+    def _write_closure(
+        self, run_id: UUID, operation: SqlOperation, parameters: dict[str, object]
+    ) -> RunRecord:
+        """Runs a query that closes a run and reads back its totals and steps.
+
+        Exists as the shared write of every way of closing a run.
+
+        Args:
+            run_id: The run to close.
+            operation: The closing query of the `runs` table.
+            parameters: The bound parameters of that query.
+
+        Returns:
+            RunRecord: the closed run, with its totals and its steps.
+
+        Raises:
+            RunNotRunningError: If the run does not exist or was already closed.
+        """
         with database_session(self._bind) as session:
-            sql = load_sql(DatabaseTable.RUNS, SqlOperation.FINISH)
+            sql = load_sql(DatabaseTable.RUNS, operation)
             row = session.execute(text(sql), parameters).mappings().first()
             steps = list_steps_of_runs(session, [run_id]).get(run_id, [])
         run = RunRecord.model_validate({**_require_open_run(row, run_id), "steps": steps})

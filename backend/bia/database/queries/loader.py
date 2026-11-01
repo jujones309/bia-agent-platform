@@ -43,6 +43,8 @@ class SqlOperation(StrEnum):
     DEACTIVATE_EXCEPT = "deactivate_except"
     INSERT = "insert"
     FINISH = "finish"
+    RECORD_TURN = "record_turn"
+    FINISH_CONVERSATION = "finish_conversation"
     LIST_BY_RUNS = "list_by_runs"
     METRICS_BY_AGENT = "metrics_by_agent"
     GET_ACTIVE = "get_active"

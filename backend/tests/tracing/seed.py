@@ -66,13 +66,16 @@ def insert_agent_version(connection: Connection, agent_id: UUID) -> UUID:
     return version_id
 
 
-def insert_active_version(connection: Connection, agent_id: UUID, spec: str) -> UUID:
-    """Inserts the first version of an agent and makes it the one that executes.
+def insert_active_version(
+    connection: Connection, agent_id: UUID, spec: str, version_number: int = 1
+) -> UUID:
+    """Inserts a version of an agent and makes it the one that executes.
 
     Args:
         connection: The connection of the test's transaction.
         agent_id: The agent the version belongs to.
         spec: The spec, as a JSON document.
+        version_number: The number of the version within the agent.
 
     Returns:
         UUID: the identifier of the new version.
@@ -81,11 +84,16 @@ def insert_active_version(connection: Connection, agent_id: UUID, spec: str) -> 
     _insert(
         connection,
         "agent_versions",
-        {"id": str(version_id), "agent_id": str(agent_id), "version_number": 1, "spec": spec},
+        {
+            "id": str(version_id),
+            "agent_id": str(agent_id),
+            "version_number": version_number,
+            "spec": spec,
+        },
     )
     agents = table("agents", column("id", Uuid), column("active_version_number"))
     connection.execute(
-        agents.update().where(agents.c.id == agent_id).values(active_version_number=1)
+        agents.update().where(agents.c.id == agent_id).values(active_version_number=version_number)
     )
     return version_id
 
