@@ -1,0 +1,12 @@
+{
+  "100001": {"saldo_cop": 187450, "periodo": "2026-10", "consumo_kwh": 212, "fecha_limite": "2026-11-18"},
+  "100002": {"saldo_cop": 96300, "periodo": "2026-10", "consumo_kwh": 108, "fecha_limite": "2026-11-18"},
+  "100003": {"saldo_cop": 0, "periodo": "2026-10", "consumo_kwh": 143, "fecha_limite": "2026-11-20"},
+  "100004": {"saldo_cop": 452780, "periodo": "2026-10", "consumo_kwh": 515, "fecha_limite": "2026-11-20"},
+  "100005": {"saldo_cop": 134900, "periodo": "2026-10", "consumo_kwh": 151, "fecha_limite": "2026-11-22"},
+  "100006": {"saldo_cop": -25000, "periodo": "2026-10", "consumo_kwh": 87, "fecha_limite": "2026-11-22"},
+  "100007": {"saldo_cop": 1284600, "periodo": "2026-10", "consumo_kwh": 1460, "fecha_limite": "2026-11-15"},
+  "100008": {"saldo_cop": 76250, "periodo": "2026-10", "consumo_kwh": 84, "fecha_limite": "2026-11-15"},
+  "100009": {"saldo_cop": 318400, "periodo": "2026-10", "consumo_kwh": 361, "fecha_limite": "2026-11-25"},
+  "100010": {"saldo_cop": 209750, "periodo": "2026-10", "consumo_kwh": 238, "fecha_limite": "2026-11-25"}
+}
