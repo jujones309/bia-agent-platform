@@ -1,4 +1,8 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from uuid import UUID
+
+from sqlalchemy import Connection, Engine
 
 from bia.catalog.tools.artifacts import RiskLevel, ToolName, ToolResult
 
@@ -8,6 +12,18 @@ class UnknownToolError(ValueError):
 
     Exists to name the rejected value and the valid options. Raised by `get_tool`.
     """
+
+
+@dataclass(frozen=True)
+class ToolContext:
+    """Holds what a tool receives from the execution instead of from the model.
+
+    Exists so a model can never choose what the spec decides, like the knowledge base to read.
+    Built by `AgentRunner` and passed to every `Tool.run`.
+    """
+
+    bind: Engine | Connection  # the database handle of the execution
+    knowledge_base_id: UUID | None  # the base assigned in the spec, if any
 
 
 class Tool(ABC):
@@ -62,7 +78,7 @@ class Tool(ABC):
         """
 
     @abstractmethod
-    def run(self, args: dict[str, object]) -> ToolResult:
+    def run(self, args: dict[str, object], context: ToolContext) -> ToolResult:
         """Executes the tool.
 
         Exists as the single entrypoint the runtime calls. Expected failures are returned
@@ -70,6 +86,7 @@ class Tool(ABC):
 
         Args:
             args: The arguments, already validated against `parameters_schema` by the caller.
+            context: What the execution provides, which the model cannot influence.
 
         Returns:
             ToolResult: the output, or the error to show the model.

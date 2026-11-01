@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from bia.catalog.tools.artifacts import CustomerInvoice, RiskLevel, ToolName, ToolResult
-from bia.catalog.tools.base import Tool
+from bia.catalog.tools.base import Tool, ToolContext
 
 _INVOICES_PATH = Path(__file__).resolve().parent / "data" / "facturas.json"
 _CUSTOMER_NUMBER_ARGUMENT = "numero_cliente"
@@ -103,7 +103,7 @@ class ConsultarFacturaTool(Tool):
         """
         return RiskLevel.LOW
 
-    def run(self, args: dict[str, object]) -> ToolResult:
+    def run(self, args: dict[str, object], _context: ToolContext) -> ToolResult:
         """Looks up the invoice of the requested customer.
 
         Exists as the tool's behavior. An unknown customer is an expected outcome, so the
@@ -111,6 +111,7 @@ class ConsultarFacturaTool(Tool):
 
         Args:
             args: The arguments, already validated against `parameters_schema`.
+            _context: Unused; required by the `Tool` contract.
 
         Returns:
             ToolResult: the invoice as JSON-compatible data, or the error for the model.

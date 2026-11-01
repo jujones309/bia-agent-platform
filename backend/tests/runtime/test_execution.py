@@ -6,14 +6,19 @@ from sqlalchemy import Connection, Engine
 
 from bia.agents.artifacts import AgentSpec
 from bia.agents.repository import ActiveVersionNotFoundError
+from bia.catalog.tools.artifacts import ToolName
 from bia.catalog.tools.sync import sync_tools
 from bia.database.connection import database_session
-from bia.database.migrate import apply_schema
+from bia.database.migrate import apply_schema, apply_seeds
 from bia.providers.artifacts import ToolCall
+from bia.rag import ingestion, retrieval
+from bia.rag.artifacts import DocumentDraft, DocumentType, KnowledgeBaseDraft
+from bia.rag.ingestion import ingest_document
+from bia.rag.repository import insert_knowledge_base
 from bia.runtime import runner as runner_module
 from bia.runtime.execution import AgentConfigurationError, load_agent_execution
 from bia.runtime.runner import run_agent
-from bia.tracing.artifacts import RunOrigin, RunStatus
+from bia.tracing.artifacts import RunOrigin, RunStatus, StepType
 from bia.tracing.repository import list_runs
 from tests.providers.fake import FakeModelProvider
 from tests.tracing.seed import insert_active_version, insert_agent, insert_model
@@ -138,6 +143,75 @@ def test_run_agent_stores_the_reason_of_a_failure(
     assert run.status is RunStatus.FAILED
     assert "limit of 1 iterations" in run.error
     assert run.steps[1].error is not None
+
+
+def _new_knowledge_base(connection: Connection, title: str, content: str) -> UUID:
+    """Creates a knowledge base holding one tariff document.
+
+    Args:
+        connection: The connection of the test's transaction.
+        title: The title of the document.
+        content: The markdown of the document.
+
+    Returns:
+        UUID: the identifier of the base.
+    """
+    with database_session(connection) as session:
+        draft = KnowledgeBaseDraft(name=title, description="Pruebas")
+        base_id = insert_knowledge_base(session, draft).id
+    document = DocumentDraft(title=title, document_type=DocumentType.TARIFF, content=content)
+    ingest_document(connection, base_id, document)
+    return base_id
+
+
+def test_retrieval_reads_only_the_base_of_the_spec_and_leaves_its_step_in_the_trace(
+    connection: Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies the whole path on real SQL: tool, search, trace with chunks and summed cost."""
+    with database_session(connection) as session:
+        apply_seeds(session)
+    embedder = FakeModelProvider(embedding_dimensions=1536)
+    monkeypatch.setattr(ingestion, "get_provider", lambda _name: embedder)
+    monkeypatch.setattr(retrieval, "get_provider", lambda _name: embedder)
+    own_base = _new_knowledge_base(connection, "Propia", "# Hogar\nEstrato 1: 412")
+    _new_knowledge_base(connection, "Ajena", "# Secreto\nNo debe aparecer")
+    agent_id = insert_agent(connection)
+    spec = AgentSpec(
+        purpose="Tarifas",
+        system_prompt="Eres útil",
+        model_id=insert_model(connection),
+        tool_names=[ToolName.BUSCAR_CONOCIMIENTO],
+        knowledge_base_id=own_base,
+    )
+    insert_active_version(connection, agent_id, spec.model_dump_json())
+    chat = FakeModelProvider()
+    chat.queue_tool_calls(
+        [
+            ToolCall(
+                id="call-1",
+                name=ToolName.BUSCAR_CONOCIMIENTO,
+                arguments='{"consulta": "Hogar\\n\\nEstrato 1: 412"}',
+            )
+        ]
+    )
+    chat.queue_text("El estrato 1 paga 412, según Propia.")
+    monkeypatch.setattr(runner_module, "get_provider", lambda _name: chat)
+
+    result = run_agent(connection, agent_id, "¿Cuánto paga el estrato 1?", RunOrigin.PLAYGROUND)
+
+    with database_session(connection) as session:
+        run = list_runs(session, agent_id, limit=1)[0]
+    assert result.status is RunStatus.SUCCEEDED
+    step = run.steps[1]
+    assert step.step_type is StepType.RETRIEVAL
+    assert step.tool_id is not None
+    assert step.model_id is not None
+    assert [chunk["document"] for chunk in step.output["chunks"]] == ["Propia"]
+    assert step.output["chunks"][0]["similarity"] > 0.99
+    assert step.cost > 0
+    assert run.total_tokens == 31  # two model calls of 15 tokens and a one-text embedding
+    assert "Estrato 1: 412" in chat.chat_requests[1][-1].content
+    assert "No debe aparecer" not in chat.chat_requests[1][-1].content
 
 
 def _tool_call(arguments: str) -> ToolCall:

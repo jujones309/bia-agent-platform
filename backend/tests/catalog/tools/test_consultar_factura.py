@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from unittest.mock import sentinel
 
 import pytest
 from pydantic import ValidationError
@@ -10,7 +11,7 @@ from bia.catalog.tools.consultar_factura import ConsultarFacturaTool
 
 def test_run_returns_the_invoice_of_the_requested_customer() -> None:
     """Verifies the exact billing data of one customer of the real data file."""
-    result = ConsultarFacturaTool().run({"numero_cliente": "100001"})
+    result = ConsultarFacturaTool().run({"numero_cliente": "100001"}, sentinel.context)
 
     assert result.error is None
     assert result.output == {
@@ -23,14 +24,14 @@ def test_run_returns_the_invoice_of_the_requested_customer() -> None:
 
 def test_output_can_be_sent_to_the_model_as_json() -> None:
     """Verifies dates do not stay as objects the runtime could not serialize."""
-    result = ConsultarFacturaTool().run({"numero_cliente": "100001"})
+    result = ConsultarFacturaTool().run({"numero_cliente": "100001"}, sentinel.context)
 
     assert json.loads(json.dumps(result.output)) == result.output
 
 
 def test_run_reports_an_unknown_customer_as_an_error_for_the_model() -> None:
     """Verifies a wrong number does not raise, so the agent can ask for it again."""
-    result = ConsultarFacturaTool().run({"numero_cliente": "999999"})
+    result = ConsultarFacturaTool().run({"numero_cliente": "999999"}, sentinel.context)
 
     assert result.output is None
     assert "999999" in result.error
@@ -41,7 +42,10 @@ def test_data_file_covers_the_customers_the_demo_needs() -> None:
     tool = ConsultarFacturaTool()
     customers = [f"1000{number:02d}" for number in range(1, 11)]
 
-    balances = [tool.run({"numero_cliente": number}).output["saldo_cop"] for number in customers]
+    balances = [
+        tool.run({"numero_cliente": number}, sentinel.context).output["saldo_cop"]
+        for number in customers
+    ]
 
     assert min(balances) < 0
 

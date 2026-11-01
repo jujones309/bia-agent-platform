@@ -1,9 +1,12 @@
 from datetime import date, datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Self
 from uuid import UUID
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
+
+from bia.tracing.artifacts import StepType
 
 
 class ToolName(StrEnum):
@@ -14,6 +17,7 @@ class ToolName(StrEnum):
     """
 
     CONSULTAR_FACTURA = "consultar_factura"
+    BUSCAR_CONOCIMIENTO = "buscar_conocimiento"
 
 
 class RiskLevel(StrEnum):
@@ -32,12 +36,18 @@ class ToolResult(BaseModel):
     """Holds the outcome of one tool execution: either an output or an error.
 
     Exists so expected failures, such as an unknown customer, reach the model as
-    information it can act on instead of breaking the loop. Produced by `Tool.run` and
-    consumed by the runtime.
+    information it can act on instead of breaking the loop. Also says how the runtime must
+    trace the execution, including any model the tool called, since every LLM call is traced.
+    Produced by `Tool.run` and consumed by the runtime.
     """
 
     output: dict[str, object] | None = None
     error: str | None = None
+    step_type: StepType = StepType.TOOL_CALL
+    model_id: UUID | None = None  # the model the tool called, if any
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    cost: Decimal = Field(default=Decimal(0), ge=0)
 
     @model_validator(mode="after")
     def _require_exactly_one_outcome(self) -> Self:

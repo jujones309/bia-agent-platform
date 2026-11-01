@@ -5,6 +5,7 @@ from uuid import UUID
 import jsonschema
 
 from bia.catalog.tools.artifacts import CatalogTool, ToolResult
+from bia.catalog.tools.base import ToolContext
 from bia.catalog.tools.registry import get_tool
 from bia.providers.artifacts import ChatMessage, MessageRole, ToolCall, ToolDefinition
 
@@ -50,7 +51,7 @@ def _parse_arguments(raw_arguments: str, schema: dict[str, object]) -> dict[str,
     return arguments
 
 
-def _run_tool(tool_name: str, arguments: dict[str, object]) -> ToolResult:
+def _run_tool(tool_name: str, arguments: dict[str, object], context: ToolContext) -> ToolResult:
     """Runs a tool, turning a crash into an error result.
 
     Exists so a bug in one tool does not end the conversation. The model only gets a generic
@@ -60,12 +61,13 @@ def _run_tool(tool_name: str, arguments: dict[str, object]) -> ToolResult:
     Args:
         tool_name: The name of the tool.
         arguments: The validated arguments.
+        context: What the execution provides to the tool.
 
     Returns:
         ToolResult: what the tool returned, or an error if it crashed.
     """
     try:
-        return get_tool(tool_name).run(arguments)
+        return get_tool(tool_name).run(arguments, context)
     except Exception:
         logger.exception("Tool %s crashed", tool_name)
         return ToolResult(error=f"La herramienta {tool_name} falló de forma inesperada.")
@@ -98,13 +100,15 @@ class ToolExecutor:
     information for the model instead of breaking the loop. Consumed by `AgentRunner`.
     """
 
-    def __init__(self, assigned_tools: list[CatalogTool]) -> None:
+    def __init__(self, assigned_tools: list[CatalogTool], context: ToolContext) -> None:
         """Creates an executor for the tools of one agent.
 
         Args:
             assigned_tools (list[CatalogTool]): The catalog entries the agent may call.
+            context (ToolContext): What the execution provides to the tools.
         """
         self._tools_by_name = {tool.name: tool for tool in assigned_tools}
+        self._context = context
 
     def definitions(self) -> list[ToolDefinition]:
         """Builds the definitions offered to the model.
@@ -155,4 +159,4 @@ class ToolExecutor:
             arguments = _parse_arguments(tool_call.arguments, tool.parameters_schema)
         except _InvalidToolArgumentsError as error:
             return ToolResult(error=str(error))
-        return _run_tool(tool.name, arguments)
+        return _run_tool(tool.name, arguments, self._context)

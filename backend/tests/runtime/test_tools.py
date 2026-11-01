@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from unittest.mock import sentinel
 from uuid import uuid4
 
 import pytest
@@ -44,10 +45,15 @@ def _call(arguments: str, name: str = ToolName.CONSULTAR_FACTURA) -> ToolCall:
 
 def test_valid_call_returns_the_output_of_the_tool() -> None:
     """Verifies valid arguments reach the real tool."""
-    result = ToolExecutor([_catalog_entry()]).execute(_call('{"numero_cliente": "100001"}'))
+    result = ToolExecutor([_catalog_entry()], sentinel.context).execute(
+        _call('{"numero_cliente": "100001"}')
+    )
 
     assert result.error is None
-    assert result.output == ConsultarFacturaTool().run({"numero_cliente": "100001"}).output
+    assert (
+        result.output
+        == ConsultarFacturaTool().run({"numero_cliente": "100001"}, sentinel.context).output
+    )
 
 
 @pytest.mark.parametrize(
@@ -64,7 +70,7 @@ def test_invalid_arguments_become_an_error_for_the_model(
     arguments: str, expected_error: str
 ) -> None:
     """Verifies a model's mistake is explained to it instead of reaching the tool."""
-    result = ToolExecutor([_catalog_entry()]).execute(_call(arguments))
+    result = ToolExecutor([_catalog_entry()], sentinel.context).execute(_call(arguments))
 
     assert result.output is None
     assert expected_error in result.error
@@ -74,7 +80,7 @@ def test_a_tool_outside_the_spec_is_not_executed(monkeypatch: pytest.MonkeyPatch
     """Verifies a registered tool stays out of reach if the agent was not assigned it."""
     monkeypatch.setattr(runtime_tools, "get_tool", _fail_if_called)
 
-    result = ToolExecutor([]).execute(_call('{"numero_cliente": "100001"}'))
+    result = ToolExecutor([], sentinel.context).execute(_call('{"numero_cliente": "100001"}'))
 
     assert "no está disponible" in result.error
 
@@ -100,7 +106,9 @@ def test_a_crash_becomes_a_generic_error_without_internal_details(
     """Verifies a crash does not break the loop or show internals to the model."""
     monkeypatch.setattr(runtime_tools, "get_tool", _fail_if_called)
 
-    result = ToolExecutor([_catalog_entry()]).execute(_call('{"numero_cliente": "1"}'))
+    result = ToolExecutor([_catalog_entry()], sentinel.context).execute(
+        _call('{"numero_cliente": "1"}')
+    )
 
     assert "falló de forma inesperada" in result.error
     assert "secret-connection-string" not in result.error
@@ -109,7 +117,7 @@ def test_a_crash_becomes_a_generic_error_without_internal_details(
 def test_tool_id_is_known_only_for_assigned_tools() -> None:
     """Verifies the trace references the catalog and tolerates a name the model invented."""
     entry = _catalog_entry()
-    executor = ToolExecutor([entry])
+    executor = ToolExecutor([entry], sentinel.context)
 
     assert executor.tool_id_of(entry.name) == entry.id
     assert executor.tool_id_of("invented") is None
@@ -117,7 +125,7 @@ def test_tool_id_is_known_only_for_assigned_tools() -> None:
 
 def test_tool_message_answers_its_call_with_json() -> None:
     """Verifies errors and accents reach the model readable and tied to the right call."""
-    result = ToolExecutor([]).execute(_call("{}", name="inventada"))
+    result = ToolExecutor([], sentinel.context).execute(_call("{}", name="inventada"))
 
     message = to_tool_message(_call("{}"), result)
 

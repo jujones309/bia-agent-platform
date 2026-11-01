@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import Connection, Engine
 
+from bia.catalog.tools.base import ToolContext
 from bia.database.connection import database_session
 from bia.providers.artifacts import ChatMessage, ToolCall
 from bia.providers.base import ModelProvider, ProviderError
@@ -67,15 +68,19 @@ class AgentRunner:
     recorded. Consumed through `run_agent` by the playground and, later, by the evals.
     """
 
-    def __init__(self, recorder: RunRecorder, provider: ModelProvider) -> None:
+    def __init__(
+        self, recorder: RunRecorder, provider: ModelProvider, bind: Engine | Connection
+    ) -> None:
         """Creates a runner.
 
         Args:
             recorder (RunRecorder): Where the trace of each execution is written.
             provider (ModelProvider): The door to the model of the execution.
+            bind (Engine | Connection): The database handle the tools read through.
         """
         self._recorder = recorder
         self._provider = provider
+        self._bind = bind
 
     def run(self, execution: AgentExecution, input_text: str, origin: RunOrigin) -> AgentRunResult:
         """Executes an agent from start to finish, leaving its run closed.
@@ -121,7 +126,8 @@ class AgentRunner:
         """
         spec = execution.version.spec
         messages = build_initial_messages(spec, input_text)
-        executor = ToolExecutor(execution.tools)
+        context = ToolContext(bind=self._bind, knowledge_base_id=spec.knowledge_base_id)
+        executor = ToolExecutor(execution.tools, context)
         for _ in range(spec.max_iterations):
             reply = self._call_model(run_id, execution, messages, executor)
             messages.append(reply)
@@ -206,11 +212,15 @@ class AgentRunner:
         self._recorder.add_step(
             run_id,
             RunStepDraft(
-                step_type=StepType.TOOL_CALL,
+                step_type=result.step_type,
                 tool_id=executor.tool_id_of(tool_call.name),
+                model_id=result.model_id,
                 input={"name": tool_call.name, "arguments": tool_call.arguments},
                 output=result.output,
                 error=result.error,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                cost=result.cost,
                 latency_ms=_elapsed_ms(started_at),
             ),
         )
@@ -241,5 +251,5 @@ def run_agent(
     """
     with database_session(bind) as session:
         execution = load_agent_execution(session, agent_id)
-    runner = AgentRunner(RunRecorder(bind), get_provider(execution.model.provider))
+    runner = AgentRunner(RunRecorder(bind), get_provider(execution.model.provider), bind)
     return runner.run(execution, input_text, origin)

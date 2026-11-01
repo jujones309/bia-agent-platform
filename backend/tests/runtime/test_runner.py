@@ -1,15 +1,17 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+from unittest.mock import sentinel
 from uuid import uuid4
 
 import pytest
 
 from bia.agents.artifacts import AgentSpec, AgentVersion
 from bia.catalog.models.artifacts import CatalogModel, ModelSize
-from bia.catalog.tools.artifacts import CatalogTool
+from bia.catalog.tools.artifacts import CatalogTool, ToolResult
 from bia.catalog.tools.consultar_factura import ConsultarFacturaTool
 from bia.providers.artifacts import MessageRole, ProviderName, ToolCall
 from bia.providers.base import ProviderError
+from bia.runtime import tools as runtime_tools
 from bia.runtime.execution import AgentExecution
 from bia.runtime.runner import AgentRunner
 from bia.tracing.artifacts import RunOrigin, RunStatus, StepType
@@ -109,7 +111,9 @@ def test_direct_answer_closes_the_run_as_succeeded(
     provider.queue_text("Hola")
     execution = _execution()
 
-    result = AgentRunner(recorder, provider).run(execution, "hola", RunOrigin.PLAYGROUND)
+    result = AgentRunner(recorder, provider, sentinel.bind).run(
+        execution, "hola", RunOrigin.PLAYGROUND
+    )
 
     assert (result.status, result.output, result.error) == (RunStatus.SUCCEEDED, "Hola", None)
     assert result.run_id == recorder.run.id
@@ -132,7 +136,9 @@ def test_tool_result_goes_back_to_the_model_and_to_the_trace(
     provider.queue_text("Tu saldo es tal")
     execution = _execution()
 
-    result = AgentRunner(recorder, provider).run(execution, "saldo", RunOrigin.PLAYGROUND)
+    result = AgentRunner(recorder, provider, sentinel.bind).run(
+        execution, "saldo", RunOrigin.PLAYGROUND
+    )
 
     assert result.output == "Tu saldo es tal"
     assert [step.step_type for step in recorder.steps] == [
@@ -141,7 +147,7 @@ def test_tool_result_goes_back_to_the_model_and_to_the_trace(
         StepType.LLM_CALL,
     ]
     tool_step = recorder.steps[1]
-    expected = ConsultarFacturaTool().run({"numero_cliente": "100001"}).output
+    expected = ConsultarFacturaTool().run({"numero_cliente": "100001"}, sentinel.context).output
     assert tool_step.output == expected
     assert tool_step.tool_id == execution.tools[0].id
     roles = [message.role for message in provider.chat_requests[1]]
@@ -156,7 +162,9 @@ def test_tool_error_reaches_the_model_without_breaking_the_loop(
     provider.queue_tool_calls([_tool_call("{}")])
     provider.queue_text("¿Cuál es tu número de cliente?")
 
-    result = AgentRunner(recorder, provider).run(_execution(), "saldo", RunOrigin.PLAYGROUND)
+    result = AgentRunner(recorder, provider, sentinel.bind).run(
+        _execution(), "saldo", RunOrigin.PLAYGROUND
+    )
 
     assert result.status is RunStatus.SUCCEEDED
     assert "numero_cliente" in recorder.steps[1].error
@@ -172,7 +180,7 @@ def test_every_tool_call_of_a_reply_is_answered(
     provider.queue_tool_calls([_tool_call(), second])
     provider.queue_text("Listo")
 
-    AgentRunner(recorder, provider).run(_execution(), "saldo", RunOrigin.PLAYGROUND)
+    AgentRunner(recorder, provider, sentinel.bind).run(_execution(), "saldo", RunOrigin.PLAYGROUND)
 
     answered = [message.tool_call_id for message in provider.chat_requests[1][-2:]]
     assert answered == ["call-1", "call-2"]
@@ -185,7 +193,9 @@ def test_iteration_limit_fails_the_run_after_exactly_that_many_calls(
     for _ in range(2):
         provider.queue_tool_calls([_tool_call()])
 
-    result = AgentRunner(recorder, provider).run(_execution(2), "saldo", RunOrigin.PLAYGROUND)
+    result = AgentRunner(recorder, provider, sentinel.bind).run(
+        _execution(2), "saldo", RunOrigin.PLAYGROUND
+    )
 
     assert result.status is RunStatus.FAILED
     assert result.output is None
@@ -200,7 +210,9 @@ def test_provider_failure_is_traced_and_reported_without_raising(
     provider.queue_chat_error(ProviderError("Se agotó el tiempo"))
     execution = _execution()
 
-    result = AgentRunner(recorder, provider).run(execution, "hola", RunOrigin.PLAYGROUND)
+    result = AgentRunner(recorder, provider, sentinel.bind).run(
+        execution, "hola", RunOrigin.PLAYGROUND
+    )
 
     assert (result.status, result.error) == (RunStatus.FAILED, "Se agotó el tiempo")
     assert recorder.run.status is RunStatus.FAILED
@@ -213,7 +225,69 @@ def test_unexpected_crash_closes_the_run_and_propagates(recorder: FakeRunRecorde
     provider = FakeModelProvider()  # nothing scripted: the call raises AssertionError
 
     with pytest.raises(AssertionError):
-        AgentRunner(recorder, provider).run(_execution(), "hola", RunOrigin.PLAYGROUND)
+        AgentRunner(recorder, provider, sentinel.bind).run(
+            _execution(), "hola", RunOrigin.PLAYGROUND
+        )
 
     assert recorder.run.status is RunStatus.FAILED
     assert "AssertionError" in recorder.run.error
+
+
+class _RetrievalTool:
+    """Stands for a tool that calls a model and captures what the execution gives it."""
+
+    def __init__(self, result: ToolResult) -> None:
+        """Keeps the result to return.
+
+        Args:
+            result (ToolResult): What `run` returns.
+        """
+        self._result = result
+        self.contexts: list[object] = []
+
+    def run(self, _args: dict[str, object], context: object) -> ToolResult:
+        """Records the context and returns the kept result.
+
+        Args:
+            _args: The unused arguments.
+            context: What the runner provides.
+
+        Returns:
+            ToolResult: the kept result.
+        """
+        self.contexts.append(context)
+        return self._result
+
+
+def test_a_tool_decides_its_step_type_and_its_model_spend_reaches_the_trace(
+    provider: FakeModelProvider, recorder: FakeRunRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies an embedding inside a tool is traced, and the tool receives the spec's base."""
+    embedding_model_id = uuid4()
+    tool = _RetrievalTool(
+        ToolResult(
+            output={"chunks": []},
+            step_type=StepType.RETRIEVAL,
+            model_id=embedding_model_id,
+            input_tokens=7,
+            cost=Decimal("0.5"),
+        )
+    )
+    monkeypatch.setattr(runtime_tools, "get_tool", lambda _name: tool)
+    provider.queue_tool_calls([_tool_call()])
+    provider.queue_text("Listo")
+    execution = _execution()
+    base_id = uuid4()
+    spec = execution.version.spec.model_copy(update={"knowledge_base_id": base_id})
+    version = execution.version.model_copy(update={"spec": spec})
+
+    AgentRunner(recorder, provider, sentinel.bind).run(
+        AgentExecution(version, execution.model, execution.tools), "hola", RunOrigin.PLAYGROUND
+    )
+
+    step = recorder.steps[1]
+    assert step.step_type is StepType.RETRIEVAL
+    assert (step.model_id, step.input_tokens, step.cost) == (embedding_model_id, 7, Decimal("0.5"))
+    assert step.tool_id == execution.tools[0].id
+    assert tool.contexts[0].knowledge_base_id == base_id
+    assert tool.contexts[0].bind is sentinel.bind

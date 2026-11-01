@@ -3,10 +3,12 @@ from functools import lru_cache
 
 from bia.catalog.tools.artifacts import ToolName
 from bia.catalog.tools.base import Tool, UnknownToolError
+from bia.catalog.tools.buscar_conocimiento import BuscarConocimientoTool
 from bia.catalog.tools.consultar_factura import ConsultarFacturaTool
 
 _TOOL_BUILDERS: dict[ToolName, Callable[[], Tool]] = {
     ToolName.CONSULTAR_FACTURA: ConsultarFacturaTool,
+    ToolName.BUSCAR_CONOCIMIENTO: BuscarConocimientoTool,
 }
 
 

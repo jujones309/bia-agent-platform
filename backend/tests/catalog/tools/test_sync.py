@@ -23,4 +23,4 @@ def test_sync_writes_every_tool_and_retires_only_the_rest(
     sync.sync_tools(sentinel.session)
 
     assert upserted == list_registered_tools()
-    assert kept_active == [[ToolName.CONSULTAR_FACTURA.value]]
+    assert kept_active == [[name.value for name in ToolName]]
