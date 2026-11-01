@@ -36,13 +36,15 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | 6 | Registro de agentes | Terminada |
 | 7 | RAG | Terminada |
 | 8 | Agent Builder | Terminada |
-| 9-14 | Evals, caso real, frontend y entrega | Pendientes |
+| 9 | Evals y publicación | Terminada |
+| 10-14 | Caso real, frontend y entrega | Pendientes |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
 el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime,
-el registro de agentes, las bases de conocimiento con búsqueda citable y el Agent Builder, que detecta
-duplicados y propone la spec. Todavía no hay evals ni forma de publicar un agente, y por eso el flujo
-llega hasta el paso 5 de la lista anterior. El detalle está en [docs/PLAN.md](docs/PLAN.md).
+el registro de agentes, las bases de conocimiento con búsqueda citable, el Agent Builder, que detecta
+duplicados y propone la spec, y los evals con su gate de publicación. Ya funciona toda la lista
+anterior por API. Falta crear el caso real a través de la plataforma, los inventarios y el frontend. El
+detalle está en [docs/PLAN.md](docs/PLAN.md).
 
 ## Stack
 
@@ -552,6 +554,7 @@ curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/<id>/versions/1/
 
 - `PATCH` recibe solo los campos de la spec que cambian y crea una versión nueva, que queda activa.
   Las versiones anteriores nunca se modifican.
+- Desde la fase 9, cambiar la versión activa de un agente `published` lo devuelve a `testing`.
 - Después de volver a una versión anterior, el siguiente `PATCH` parte de esa versión y toma el número
   siguiente de la secuencia.
 - `"knowledge_base_id": null` quita la base de conocimiento. En los demás campos, `null` no es válido.
@@ -580,7 +583,7 @@ cuyo modelo fue retirado no acepta ediciones hasta que el mismo `PATCH` elija ot
 
 ### Limitaciones actuales
 
-- **Ningún endpoint cambia el estado.** Todos los agentes quedan en `draft`; publicar llega en la fase 9.
+- **El estado solo cambia por los evals** (ver fase 9). Todavía no hay endpoint para archivar.
 - **`PATCH` solo edita la spec.** El nombre, la descripción, el área y el creador no se pueden cambiar.
 - **`POST /agents` no guarda justificación** y crea siempre agentes `user`. El Builder sí guarda
   `designer_justification` y registra agentes `system` (ver fase 8).
@@ -801,9 +804,8 @@ propuesta unos USD 0,01 y 12 s.
 
 ### Limitaciones actuales
 
-- **Todavía no se puede publicar.** Como la búsqueda solo considera agentes `published` y publicar llega
-  en la fase 9, por ahora `check` siempre responde `not_exists`. Para probar otro veredicto en una base
-  desechable, cambia a mano `agents.status` a `published`.
+- **`check` solo encuentra agentes publicados.** Un agente en `draft` o `testing` no cuenta como duplicado
+  (ver fase 9).
 - **`propose` no vuelve a chequear duplicados.** Quien llama debe haber pasado antes por `check`.
 - **Una base sin documentos también se ofrece.** El diseñador solo ve su nombre y su descripción.
 - **Si falla la creación después de diseñar** (por ejemplo, el embedding), la respuesta es 502 o 503 y no
@@ -820,4 +822,145 @@ desechable en la fase 4):
 
 ```bash
 INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/builder
+```
+
+---
+
+## Guía: fase 9 — Evals y publicación
+
+No hay migración de tablas: esta fase usa `eval_cases` y `eval_results`, que ya existían. **Al arrancar,
+la API ahora registra dos agentes de sistema más**: el generador de casos (modelo `large`) y el juez de
+evals (modelo `small`). Sus llamadas quedan como runs de origen `eval`.
+
+### De borrador a publicado
+
+```bash
+AGENT=<id del agente>
+
+# 1. Generar los casos (8 a 10, con al menos uno fuera de alcance)
+curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/$AGENT/eval-cases/generate
+
+# 2. Opcional: agregar casos propios
+curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/$AGENT/eval-cases \
+  -H 'Content-Type: application/json' \
+  -d '{"input": "¿Cómo hago un reclamo?", "expected_behavior": "Explica el procedimiento de reclamo"}'
+
+# 3. Correr todos los casos contra la versión activa
+curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/$AGENT/evals/run
+
+# 4. Revisar los resultados cuando quieras, sin costo
+curl -u demo:$API_ACCESS_PASSWORD localhost:8000/agents/$AGENT/evals
+
+# 5. Publicar
+curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/$AGENT/publish
+```
+
+Cada caso se ejecuta con el runtime real, herramientas incluidas, y luego el juez compara la respuesta
+con el comportamiento esperado. La versión se fija al empezar: editar el agente durante una corrida no
+mezcla resultados. Si el agente no produce respuesta, el caso cuenta como `fail` con puntaje 0, sin
+llamar al juez.
+
+### Qué exige el gate
+
+- **Al menos 80 % de los casos en `pass`**, sobre un mínimo de 8 casos. Un caso aprueba con puntaje desde
+  70. Estos números están en [config.py](backend/bia/evals/config.py).
+- **Se mide la versión activa**, con el resultado más reciente de cada caso. Un caso sin resultado en esa
+  versión cuenta en contra, así que un caso nuevo exige correr de nuevo.
+- **Publicar no ejecuta nada ni cuesta.** Solo lee los resultados guardados. Si no alcanza, responde 409
+  con `detail.message` y `detail.failing_cases`: los casos fallidos o pendientes, con la razón del juez.
+
+### Ciclo de vida
+
+| Evento | Estado resultante |
+|---|---|
+| Crear o proponer un agente | `draft` |
+| Empezar una corrida de evals | `draft` pasa a `testing`; los demás estados no cambian |
+| `POST /agents/{id}/publish` y pasa el gate | `published` |
+| `PATCH`, o `activate` hacia otra versión, en un agente `published` | `testing` |
+
+Se eligió devolver el agente a `testing` porque `published` promete que lo que ejecuta pasó el gate. La
+versión nueva queda activa de inmediato y el agente sale de la búsqueda de duplicados hasta volver a
+publicarse.
+
+**Para deshacer una edición** en un agente publicado, usa `activate` hacia la versión aprobada y luego
+`publish`. Sus resultados siguen guardados, así que no hace falta volver a correr evals, salvo que se
+hayan agregado casos. Los agentes de sistema no pasan por el gate y siguen `published` aunque se editen.
+
+### Vigilar un agente publicado
+
+```bash
+curl -u demo:$API_ACCESS_PASSWORD -X POST \
+  "localhost:8000/agents/$AGENT/evals/monitor?origin=production&sample_size=10"
+```
+
+El juez revisa los runs más recientes que terminaron con respuesta, comparándolos con el propósito y los
+guardrails de la versión que los atendió. La respuesta trae:
+
+- `pass_percent`: el porcentaje de los runs revisados que aprobó.
+- `baseline_pass_percent`: el resultado de la versión activa en sus evals.
+- `drift_points`: la línea base menos el resultado reciente; positivo significa que empeoró.
+- `is_drifting`: si el resultado reciente quedó por debajo del 80 %.
+- `runs`: cada run con su veredicto y su razón.
+
+Esta revisión no guarda resultados ni cambia el estado del agente: decide una persona. `sample_size` va de
+1 a 50 y cada run revisado paga una llamada al juez. **Hoy ningún endpoint crea runs de origen `production`**,
+así que con el valor por defecto la respuesta viene vacía; para probarlo usa `origin=playground`.
+
+### Errores
+
+| Endpoint | Respuestas de error |
+|---|---|
+| `POST /agents/{id}/eval-cases` | 404: el agente no existe. 409: es de sistema o está archivado. 422: cuerpo inválido. |
+| `POST /agents/{id}/eval-cases/generate` | 404: no existe el agente o su versión. 409: es de sistema o está archivado, ya tiene casos generados o su spec apunta a algo no disponible. 502: falló el modelo o los casos no sirven; no se guarda ninguno. |
+| `POST /agents/{id}/evals/run` | 404: no existe el agente o su versión. 409: es de sistema o está archivado, no tiene casos o su spec apunta a algo no disponible. 502: falló el juez o se contradijo; los resultados ya obtenidos se conservan. |
+| `GET /agents/{id}/evals` | 404: no existe el agente o su versión. |
+| `POST /agents/{id}/publish` | 404: no existe el agente o su versión. 409: es de sistema o está archivado, o no pasa el gate. |
+| `POST /agents/{id}/evals/monitor` | 404: no existe el agente o su versión. 409: es de sistema o está archivado, o la spec del juez apunta a algo no disponible. 422: parámetros inválidos. 502: falló el juez o se contradijo. |
+
+### Costo y duración
+
+En una prueba real con la API de OpenAI y un agente de una herramienta, generar 10 casos costó unos
+USD 0,011 y tardó 13 s, y correrlos costó unos USD 0,002 y tardó 46 s. El agente sacó 90 %. Esa prueba se
+hizo antes de ajustar el prompt del generador para aceptar identificadores inexistentes, y no se repitió
+después.
+
+### Cambiar un prompt o el modelo
+
+Funciona como en la fase 8. Los prompts son
+[case_generator.md](backend/bia/evals/prompts/case_generator.md) y
+[judge.md](backend/bia/evals/prompts/judge.md); los modelos se cambian con `PATCH /agents/{id}`:
+
+```bash
+# Generador de casos: 5d0c6f2e-8a51-4f0b-9f1e-2f6a7b3c1d03
+# Juez de evals:      5d0c6f2e-8a51-4f0b-9f1e-2f6a7b3c1d04
+curl -u demo:$API_ACCESS_PASSWORD "localhost:8000/runs?agent_id=5d0c6f2e-8a51-4f0b-9f1e-2f6a7b3c1d04"
+```
+
+### Limitaciones actuales
+
+- **Los casos no se pueden borrar ni regenerar.** Un caso generado que esté mal escrito cuenta en contra, y
+  quitarlo requiere SQL a mano: primero sus filas de `eval_results` y luego la de `eval_cases`. Por la misma
+  razón, los casos no se actualizan si la spec cambia mucho; agrega casos manuales.
+- **El generador no conoce los datos reales.** Puede inventar un número de cliente, de modo que el agente
+  responde que no lo encontró. En la prueba real, un caso falló por esto. Para probar una consulta exitosa,
+  agrega un caso manual con un cliente existente, como `100001`.
+- **Un mal resultado no despublica.** Si se corren evals de nuevo sobre un agente `published` y no alcanza
+  el umbral, o se agrega un caso, sigue publicado. Revisa `passes_gate` en `GET /agents/{id}/evals`.
+- **El runtime no mira el estado.** `POST /agents/{id}/run` ejecuta agentes en cualquier estado. Cuando exista
+  un canal de producción, debe exigir `published`.
+- **La corrida es síncrona y secuencial.** Con muchos casos o un agente lento, la petición puede superar el
+  tiempo máximo de la plataforma de despliegue. Los resultados ya guardados se conservan, pero una corrida
+  nueva vuelve a ejecutar todos los casos.
+- **El juez solo ve la respuesta final**, no las herramientas que usó el agente.
+- **Solo se consulta la versión activa.** Los resultados anteriores quedan en `eval_results`, sin endpoint
+  para leerlos.
+
+### Pruebas de esta fase
+
+El juez, la validación de casos, los números del gate y de la deriva, y los routers corren en cada
+`uv run pytest`, también en CI. El flujo completo y su SQL usan Postgres, así que requieren
+`INTEGRATION_DATABASE_URL` (ver la base desechable en la fase 4):
+
+```bash
+INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/evals tests/agents tests/builder
 ```

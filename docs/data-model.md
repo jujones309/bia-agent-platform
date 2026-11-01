@@ -70,7 +70,7 @@ Identidad estable de un agente; su configuración vive en `agent_versions`.
 | `description` | `text` | Qué necesidad cubre; es el texto que compara la detección de duplicados. |
 | `owner_area` | `text` | Área de Bia responsable del agente. |
 | `creator` | `text` | Persona que lo creó. |
-| `status` | `text` | Ciclo de vida. Cerrado: `draft`, `testing`, `published`, `archived`. |
+| `status` | `text` | Ciclo de vida. Cerrado: `draft`, `testing`, `published`, `archived`. Una corrida de evals pasa `draft` a `testing`; solo el gate publica, y cambiar la versión activa de un agente `published` de empleado lo devuelve a `testing`. |
 | `kind` | `text` | Cerrado: `user` (creado por empleados), `system` (partes de la plataforma). |
 | `description_embedding` | `vector(1536)` | Embedding de `description` para buscar duplicados; nulo hasta generarlo. |
 | `active_version_number` | `integer` | Número de la versión vigente; nulo antes de la primera. Es un número y no una FK para evitar un ciclo entre `agents` y `agent_versions`. |
@@ -186,14 +186,17 @@ Un paso dentro de un run. Único por `(run_id, step_order)`.
 
 ### `eval_results`
 
+Es un historial: una corrida nueva agrega filas, y el gate lee la más reciente de cada caso en cada
+versión.
+
 | Columna | Tipo | Significado |
 |---|---|---|
 | `id` | `uuid` | Identificador del resultado. |
 | `eval_case_id` | `uuid` → `eval_cases` | Caso evaluado. |
 | `agent_version_id` | `uuid` → `agent_versions` | Versión evaluada. |
 | `output` | `text` | Respuesta del agente. |
-| `verdict` | `text` | Decisión del juez. Propuesto: `pass`, `fail`. |
-| `score` | `numeric(5,2)` | Puntaje del juez, de 0 a 100; alimenta el gate de publicación. |
+| `verdict` | `text` | Decisión del juez: `pass` o `fail`. El gate de publicación cuenta los `pass`. |
+| `score` | `numeric(5,2)` | Puntaje del juez, de 0 a 100; indica qué tan cerca estuvo la respuesta. Desde 70 es `pass`. |
 | `judge_reason` | `text` | Por qué el juez decidió así. |
 | `created_at` | `timestamptz` | Cuándo se evaluó. |
 

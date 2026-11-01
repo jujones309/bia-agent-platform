@@ -161,13 +161,13 @@ Objetivo: de una descripción en lenguaje natural a un agente propuesto, reutili
 
 Objetivo: no se publica nada sin pasar pruebas, y se puede vigilar en producción.
 
-- [ ] **9.1 Generación de casos** — Un prompt genera 8-10 casos (input + comportamiento esperado) a partir de la spec, incluyendo casos fuera de alcance. Se guardan como `generated`.
-- [ ] **9.2 Casos manuales** — `POST /agents/{id}/eval-cases` para que el usuario agregue los suyos.
-- [ ] **9.3 Juez de evals** — Prompt LLM-as-judge que compara el output con el comportamiento esperado y devuelve veredicto, puntaje y razón.
-- [ ] **9.4 Corrida de evals** — Ejecuta todos los casos contra una versión con el runtime real y guarda los resultados.
-- [ ] **9.5 Gate de publicación** — `POST /agents/{id}/publish` exige que la versión activa supere un umbral (p. ej. ≥ 80 %). Si no, devuelve el detalle de los casos fallidos. Definir también qué pasa al editar o hacer rollback de un agente `published`: hoy `PATCH` y `activate` cambian la versión activa de inmediato, sin pasar por evals.
-- [ ] **9.6 Endpoint de evals** — `POST /agents/{id}/evals/run` y `GET /agents/{id}/evals`.
-- [ ] **9.7 Monitoreo en producción** — Endpoint o script que reevalúa una muestra de runs recientes de producción con el juez y reporta deriva. Si no alcanza el tiempo, queda solo documentado.
+- [x] **9.1 Generación de casos** — Un prompt genera 8-10 casos (input + comportamiento esperado) a partir de la spec, incluyendo casos fuera de alcance. Se guardan como `generated`.
+- [x] **9.2 Casos manuales** — `POST /agents/{id}/eval-cases` para que el usuario agregue los suyos.
+- [x] **9.3 Juez de evals** — Prompt LLM-as-judge que compara el output con el comportamiento esperado y devuelve veredicto, puntaje y razón.
+- [x] **9.4 Corrida de evals** — Ejecuta todos los casos contra una versión con el runtime real y guarda los resultados.
+- [x] **9.5 Gate de publicación** — `POST /agents/{id}/publish` exige que la versión activa supere un umbral (p. ej. ≥ 80 %). Si no, devuelve el detalle de los casos fallidos. Al editar o hacer rollback de un agente `published`, la versión activa cambia y el agente vuelve a `testing` hasta pasar otra vez por este endpoint.
+- [x] **9.6 Endpoint de evals** — `POST /agents/{id}/evals/run` y `GET /agents/{id}/evals`.
+- [x] **9.7 Monitoreo en producción** — Endpoint o script que reevalúa una muestra de runs recientes de producción con el juez y reporta deriva (`POST /agents/{id}/evals/monitor`).
 
 ## Fase 10 — Caso real end-to-end
 
