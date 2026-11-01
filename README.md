@@ -32,8 +32,7 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | Frontend desplegado | https://bia-agent-platform-frontend.vercel.app |
 | Video | Pendiente de grabar |
 
-Para correrlo en local: levanta el backend con la [guía de la fase 0](#guía-fase-0--setup-y-deploy) y el
-frontend con la [guía de la fase 12](#guía-fase-12--frontend).
+Para probarla, en la web desplegada o en tu máquina, sigue [COMO_EJECUTAR.md](COMO_EJECUTAR.md).
 
 ## Estado
 
@@ -53,10 +52,10 @@ frontend con la [guía de la fase 12](#guía-fase-12--frontend).
 | 11 | Inventarios y orquestación | Terminada |
 | 12 | Frontend | Terminada |
 | 13 | Documento de arquitectura | Terminada |
-| 14 | Entrega | En curso: faltan el video y las invitaciones |
-| Mejoras, bloque 3 | Administración desde la interfaz | Terminado en la rama, sin desplegar |
-| Mejoras, tarea 4.2 | Memoria de conversación | Terminada en la rama, sin desplegar |
-| Mejoras, tareas 4.3 a 4.6 | Casos del área, expectativas exactas, umbral e índice de RAG | Terminadas en la rama, sin desplegar |
+| 14 | Entrega | En curso: falta el video |
+| Mejoras, bloque 3 | Administración desde la interfaz | Terminado y desplegado |
+| Mejoras, tarea 4.2 | Memoria de conversación | Terminada y desplegada |
+| Mejoras, tareas 4.3 a 4.6 | Casos del área, expectativas exactas, umbral e índice de RAG | Terminadas y desplegadas |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
 el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime,
@@ -79,6 +78,7 @@ el flujo desde el navegador, y ya está desplegado (ver [Entrega](#entrega)).
 ```
 backend/bia/     Paquete Python, organizado por verticales (agents, builder, runtime, rag...)
 backend/tests/   Pruebas; replica la estructura de bia/
+data/knowledge/  Documentos ficticios para las bases de conocimiento de la demo
 docs/            Modelo de datos y arquitectura
 frontend/src/    Next.js: páginas, componentes y un único cliente de la API
 frontend/tests/  Pruebas; replica la estructura de src/
@@ -651,7 +651,8 @@ jq -n --rawfile content data/knowledge/tarifas.md \
 ```
 
 Repite el segundo comando con `procedimientos-facturacion.md` (`procedure`) y
-`preguntas-frecuentes.md` (`faq`). También se aceptan `valid_from` y `valid_until` (`YYYY-MM-DD`).
+`preguntas-frecuentes.md` (`faq`). `politicas-recursos-humanos.md` (`procedure`) va en otra base, para probar un
+agente fuera de facturación. También se aceptan `valid_from` y `valid_until` (`YYYY-MM-DD`).
 
 - **Reingerir es seguro:** el documento se identifica por su título dentro de la base, y sus chunks se
   reemplazan completos. Si falla el embedding, la versión anterior queda intacta.
@@ -1315,12 +1316,11 @@ revisaron renderizados en GitHub, porque esta rama no se ha subido.
 
 ### Qué está hecho y qué falta
 
-| Tarea | Estado | Qué falta |
-|---|---|---|
-| 14.1 README | Hecho | — |
-| 14.2 Revisión de deploy | Hecho | — |
-| 14.4 Grabar el video | Pendiente | Grabarlo y subirlo |
-| 14.5 Invitaciones | Pendiente | Las debe enviar quien administra el repo privado |
+| Tarea | Estado |
+|---|---|
+| README | Hecho |
+| Revisión del despliegue | Hecho |
+| Video | Pendiente de grabar y enlazar |
 
 ### Revisar el deploy
 
@@ -1340,11 +1340,6 @@ peor caso**: los 12 casos de facturación tardaron 3 min 31 s en local y no se h
 
 El agente queda en la base: archivarlo lo retira, pero conserva sus trazas. Por eso sus runs ya no coinciden con las cifras de
 [ARCHITECTURE.md](docs/ARCHITECTURE.md), que siguen fechadas el 2026-11-01.
-
-### Enviar las invitaciones
-
-En GitHub, en Settings → Collaborators, invita a `diegogarsfe`, `tatianatorobia` y `juan.otavo@bia.app`, y confirma que aparecen
-como pendientes.
 
 ---
 
@@ -1651,5 +1646,6 @@ El gate, la ruta de búsqueda, el umbral y el índice sobre SQL real requieren `
 INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/evals tests/rag
 ```
 
-Las comprobaciones con el modelo real y la medición de latencia se hicieron una vez, con scripts que no forman parte del repo. Nada de esto se ha
-probado en el despliegue, ni la pantalla de evals en un navegador.
+Las comprobaciones con el modelo real y la medición de latencia se hicieron con scripts que no forman parte del repo. En el despliegue se
+comprobaron la migración, la API, el umbral y los prompts nuevos; la pantalla de evals se probó en un navegador en local. No se ha corrido una
+corrida de evals con los prompts nuevos en el despliegue.
