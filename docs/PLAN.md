@@ -208,21 +208,21 @@ Objetivo: lo justo para que la demo se vea como producto. Se recorta primero.
 
 Objetivo: `docs/ARCHITECTURE.md`, con las 6 preguntas como índice. Ir anotando decisiones desde la fase 0 en `docs/decisions.md` facilita mucho esta fase.
 
-- [ ] **13.1 Diagrama** — Diagrama de arquitectura en Mermaid: builder, runtime, provider, catálogos, RAG, trazas y evals.
-- [ ] **13.2 P1: Arquitectura** — Explicación de capas y flujos, y por qué un runtime genérico más specs declarativas.
-- [ ] **13.3 P2: ¿Qué es un agente?** — La spec: sus campos, el versionado y el ciclo de vida.
-- [ ] **13.4 P3: Usuario sin prompts** — Builder, detección de duplicados, diseñador restringido al catálogo y revisión humana.
-- [ ] **13.5 P4: Pruebas y producción** — Evals antes de publicar, gate, trazas, métricas y reevaluación de muestras.
-- [ ] **13.6 P5: Caso real** — El asistente de facturación de punta a punta, con números reales de costo y latencia de tus runs.
-- [ ] **13.7 P6: Fases y cronograma** — Qué entra en cada fase, qué se compra en vez de construir (Langfuse, LiteLLM, vector DB gestionada) y el riesgo principal de cada paso.
-- [ ] **13.8 Temas transversales: modelos y RAG** — Grande vs pequeño, abierto vs cerrado, API vs local, qué hacer cuando sale un modelo mejor (correr evals y cambiar el catálogo). Estructura de documentos y cuándo RAG no es la respuesta (datos transaccionales → tools).
-- [ ] **13.9 Temas transversales: fine-tuning y orquestación** — Por qué hoy no se justifica, qué señal lo activaría y con qué datos. Cuándo basta un agente y cuándo dividir en varios, cómo se pasa el contexto y quién decide el flujo.
+- [x] **13.1 Diagrama** — Diagrama de arquitectura en Mermaid: builder, runtime, provider, catálogos, RAG, trazas y evals.
+- [x] **13.2 P1: Arquitectura** — Explicación de capas y flujos, y por qué un runtime genérico más specs declarativas.
+- [x] **13.3 P2: ¿Qué es un agente?** — La spec: sus campos, el versionado y el ciclo de vida.
+- [x] **13.4 P3: Usuario sin prompts** — Builder, detección de duplicados, diseñador restringido al catálogo y revisión humana.
+- [x] **13.5 P4: Pruebas y producción** — Evals antes de publicar, gate, trazas, métricas y reevaluación de muestras.
+- [x] **13.6 P5: Caso real** — El asistente de facturación de punta a punta, con números reales de costo y latencia de tus runs.
+- [x] **13.7 P6: Fases y cronograma** — Qué entra en cada fase, qué se compra en vez de construir (Langfuse, LiteLLM, vector DB gestionada) y el riesgo principal de cada paso.
+- [x] **13.8 Temas transversales: modelos y RAG** — Grande vs pequeño, abierto vs cerrado, API vs local, qué hacer cuando sale un modelo mejor (correr evals y cambiar el catálogo). Estructura de documentos y cuándo RAG no es la respuesta (datos transaccionales → tools).
+- [x] **13.9 Temas transversales: fine-tuning y orquestación** — Por qué hoy no se justifica, qué señal lo activaría y con qué datos. Cuándo basta un agente y cuándo dividir en varios, cómo se pasa el contexto y quién decide el flujo.
 
 ## Fase 14 — Entrega
 
-- [ ] **14.1 README** — Qué es, cómo correrlo localmente, URLs desplegadas y enlace al documento de arquitectura.
-- [ ] **14.2 Revisión de deploy** — Backend en Railway y frontend en Vercel con datos sembrados. Probar el flujo completo en producción.
-- [ ] **14.3 Guion del video** — 3-5 minutos: problema, arquitectura (diagrama), Builder creando el asistente, duplicado detectado, playground con traza e inventarios.
+- [ ] **14.1 README** — Qué es, cómo correrlo localmente, URLs desplegadas y enlace al documento de arquitectura. *Pendiente solo las URLs:* dependen de 14.2.
+- [ ] **14.2 Revisión de deploy** — Backend y frontend en Vercel con datos sembrados. Probar el flujo completo en producción.
+- [x] **14.3 Guion del video** — 3-5 minutos: problema, arquitectura (diagrama), Builder creando el asistente, duplicado detectado, playground con traza e inventarios.
 - [ ] **14.4 Grabar video** — Grabar y subir. Enlazarlo en el README.
 - [ ] **14.5 Invitaciones** — Invitar a `diegogarsfe`, `tatianatorobia` y `juan.otavo@bia.app` (por correo). Verificar que las invitaciones salieron.
 

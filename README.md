@@ -23,6 +23,19 @@ El flujo para crear un agente, llamado Agent Builder, es:
 6. Se generan casos de prueba y se corren evals. Por debajo del umbral no se puede publicar.
 7. El agente se publica como una spec versionada.
 
+## Entrega
+
+| Recurso | Dónde |
+|---|---|
+| Documento de arquitectura | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Guion del video | [docs/VIDEO_SCRIPT.md](docs/VIDEO_SCRIPT.md) |
+| Backend desplegado | Pendiente de verificar (ver la guía de la fase 14) |
+| Frontend desplegado | Pendiente (ver la guía de la fase 14) |
+| Video | Pendiente de grabar |
+
+Para correrlo en local: levanta el backend con la [guía de la fase 0](#guía-fase-0--setup-y-deploy) y el
+frontend con la [guía de la fase 12](#guía-fase-12--frontend).
+
 ## Estado
 
 | Fase | Tema | Estado |
@@ -40,7 +53,8 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | 10 | Caso real end-to-end | Terminada |
 | 11 | Inventarios y orquestación | Terminada |
 | 12 | Frontend | Terminada, salvo el deploy a Vercel |
-| 13-14 | Documento y entrega | Pendientes |
+| 13 | Documento de arquitectura | Terminada |
+| 14 | Entrega | En curso: faltan el deploy, el video y las invitaciones |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
 el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime,
@@ -63,7 +77,7 @@ el flujo desde el navegador, en local; todavía no está desplegado. El detalle 
 ```
 backend/bia/     Paquete Python, organizado por verticales (agents, builder, runtime, rag...)
 backend/tests/   Pruebas; replica la estructura de bia/
-docs/            Plan y modelo de datos
+docs/            Plan, modelo de datos, arquitectura y guion del video
 frontend/src/    Next.js: páginas, componentes y un único cliente de la API
 frontend/tests/  Pruebas; replica la estructura de src/
 ```
@@ -1269,3 +1283,57 @@ quedó en el repo: se hizo una vez y no corre en CI.
 ```bash
 INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/tracing
 ```
+
+---
+
+## Guía: fase 13 — Documento de arquitectura
+
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) responde las 6 preguntas y cubre modelos, RAG, fine-tuning y orquestación. Esta
+fase no cambia código ni esquema.
+
+### De dónde salen sus cifras
+
+Las cifras de la sección 5 se leyeron con consultas de solo lectura sobre la base de `.env` el 2026-11-01: 37 runs, USD 0,034.
+Se midieron con la API en local, no en el despliegue, y los datos de facturación son ficticios. Si la base cambia, las cifras no
+se actualizan solas. Las duraciones de la sección 6 son una propuesta, no un compromiso.
+
+### Editar los diagramas
+
+Están en Mermaid, dentro del propio archivo, y GitHub los renderiza. Su sintaxis se validó con `mermaid.parse`, pero no se
+revisaron renderizados en GitHub, porque esta rama no se ha subido.
+
+### Limitaciones actuales
+
+- **La latencia no está explicada por completo.** El 36 % del tiempo de los runs del playground queda fuera de sus pasos. El
+  documento lo atribuye a las escrituras de la traza solo como hipótesis, porque no se ha medido.
+- **La muestra es pequeña:** 6 runs de playground y 12 de evals.
+
+---
+
+## Guía: fase 14 — Entrega
+
+### Qué está hecho y qué falta
+
+| Tarea | Estado | Qué falta |
+|---|---|---|
+| 14.1 README | Hecho, salvo las URLs | Agregar las URLs a la sección "Entrega" |
+| 14.2 Revisión de deploy | Pendiente | Requiere las cuentas de Vercel y de Supabase |
+| 14.3 Guion del video | Hecho | — |
+| 14.4 Grabar el video | Pendiente | Grabarlo con [el guion](docs/VIDEO_SCRIPT.md) y subirlo |
+| 14.5 Invitaciones | Pendiente | Las debe enviar quien administra el repo privado |
+
+### Revisar el deploy
+
+1. **Backend:** en Vercel, confirma las variables de la guía de la fase 0, incluida `API_ACCESS_PASSWORD`. Sin ella la app no
+   arranca. Verifica que `/health` responda 200.
+2. **Base:** apunta `DATABASE_URL` al transaction pooler (puerto 6543) y confirma que la migración, incluida la columna
+   `runs.error` de la fase 5, ya se aplicó.
+3. **Frontend:** sigue los pasos de "Desplegar" de la guía de la fase 12, incluido `CORS_ALLOWED_ORIGINS`.
+4. **Flujo completo:** entra con la contraseña y recorre los inventarios, un chequeo de duplicados y una pregunta en el playground.
+5. **Evals:** corre una corrida contra el backend desplegado. Es la prueba pendiente del límite de tiempo: los 12 casos tardaron
+   3 min 31 s en local (ver fases 9 y 10).
+
+### Enviar las invitaciones
+
+En GitHub, en Settings → Collaborators, invita a `diegogarsfe`, `tatianatorobia` y `juan.otavo@bia.app`, y confirma que aparecen
+como pendientes.
