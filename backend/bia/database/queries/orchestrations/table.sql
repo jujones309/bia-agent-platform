@@ -10,7 +10,12 @@ CREATE TABLE IF NOT EXISTS orchestrations (
     -- text: shape of the flow.
     orchestration_type text NOT NULL,
     -- timestamptz: when the flow was registered.
-    created_at timestamptz NOT NULL DEFAULT now()
+    created_at timestamptz NOT NULL DEFAULT now(),
+    -- timestamptz: when the flow was taken out of the inventory; null while it is in force.
+    retired_at timestamptz
 );
+
+-- Brings databases created before the column existed up to date.
+ALTER TABLE orchestrations ADD COLUMN IF NOT EXISTS retired_at timestamptz;
 
 ALTER TABLE orchestrations ENABLE ROW LEVEL SECURITY;

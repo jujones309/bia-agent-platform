@@ -58,6 +58,9 @@ class SqlOperation(StrEnum):
     INVENTORY = "inventory"
     COST_OF_CURRENT_MONTH = "cost_of_current_month"
     DELETE_BY_ORCHESTRATION = "delete_by_orchestration"
+    RETIRE = "retire"  # hides a row from the current reads, keeping it as history
+    RENAME = "rename"
+    EXISTS_BY_AGENT = "exists_by_agent"
 
 
 class SqlFileNotFoundError(FileNotFoundError):

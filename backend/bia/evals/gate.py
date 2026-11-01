@@ -18,6 +18,7 @@ from bia.evals.artifacts import (
 )
 from bia.evals.config import EVALS_CONFIG
 from bia.evals.repository import list_cases, list_latest_results
+from bia.orchestrations.flows import register_single_agent_flow
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,8 @@ def publish_agent(session: Session, agent_id: UUID) -> AgentDetail:
 
     Exists so nothing is published without passing its tests; used by the evals API. It runs nothing
     and costs nothing: it reads the stored results, and the lock keeps an edit from slipping in
-    between the check and the publication.
+    between the check and the publication. The agent gets its own flow in the same transaction, so
+    it cannot be published without appearing in the orchestration inventory.
 
     Args:
         session: The open session whose transaction contains the check and the change.
@@ -223,5 +225,6 @@ def publish_agent(session: Session, agent_id: UUID) -> AgentDetail:
         logger.info("Gate rejected agent %s at %s %%", agent_id, report.pass_percent)
         raise PublishRejectedError(_build_rejection(report))
     agent = set_agent_status(session, agent_id, AgentStatus.PUBLISHED)
+    register_single_agent_flow(session, agent)
     logger.info("Agent %s published at version %d", agent_id, report.version_number)
     return AgentDetail(agent=agent, active_version=get_active_version(session, agent_id))

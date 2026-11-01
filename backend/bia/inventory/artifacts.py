@@ -78,6 +78,7 @@ class OrchestrationInventoryItem(BaseModel):
     name: str
     description: str
     orchestration_type: OrchestrationType
+    is_system: bool  # a flow of the platform, which cannot be retired
     steps: list[OrchestrationStepInventoryItem]
 
 

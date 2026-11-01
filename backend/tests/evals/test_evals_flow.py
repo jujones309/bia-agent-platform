@@ -46,6 +46,7 @@ from bia.evals.gate import (
 from bia.evals.monitoring import monitor_agent
 from bia.evals.repository import list_cases
 from bia.evals.runner import NoEvalCasesError, run_evals
+from bia.inventory.repository import list_orchestration_inventory
 from bia.providers.base import ProviderError
 from bia.runtime.runner import run_agent
 from bia.tracing.artifacts import RunOrigin, RunStatus
@@ -486,3 +487,36 @@ def test_monitor_ignores_runs_without_an_answer(
 
     assert report.evaluated_runs == 0
     assert report.is_drifting is False
+
+
+def test_publishing_registers_the_flow_of_the_agent_in_the_same_step(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies a newly published agent is visible in the orchestration inventory."""
+    agent_id = _new_agent(connection)
+    _queue_generation(provider)
+    generate_cases(connection, agent_id)
+    _run_with_verdicts(connection, provider, agent_id, passes=10, fails=0)
+
+    with database_session(connection) as session:
+        before = list_orchestration_inventory(session)
+        publish_agent(session, agent_id)
+        after = list_orchestration_inventory(session)
+
+    step_agents = [step.agent_id for flow in after for step in flow.steps]
+    assert agent_id not in [step.agent_id for flow in before for step in flow.steps]
+    assert step_agents.count(agent_id) == 1
+
+
+def test_a_rejected_publication_registers_no_flow(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies an agent below the gate does not appear as if it were in use."""
+    agent_id = _new_agent(connection)
+
+    with database_session(connection) as session, pytest.raises(PublishRejectedError):
+        publish_agent(session, agent_id)
+
+    with database_session(connection) as session:
+        flows = list_orchestration_inventory(session)
+    assert agent_id not in [step.agent_id for flow in flows for step in flow.steps]

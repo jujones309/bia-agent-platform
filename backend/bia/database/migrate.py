@@ -32,11 +32,11 @@ def _execute_script(session: Session, table: DatabaseTable, operation: SqlOperat
 
 
 def apply_schema(session: Session) -> None:
-    """Creates every missing table, in dependency order.
+    """Creates every missing table and column, in dependency order.
 
     Exists so an environment can be brought up from the `table.sql` files, any number of
-    times; used by `main` and by the integration tests. It does not alter tables that
-    already exist.
+    times; used by `main` and by the integration tests. A table that already exists only
+    receives the `ADD COLUMN IF NOT EXISTS` statements of its file.
 
     Args:
         session: The open session whose transaction contains the migration.

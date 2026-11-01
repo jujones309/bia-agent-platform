@@ -9,6 +9,7 @@ from bia.api import agents as agents_api
 from bia.api import builder as builder_api
 from bia.api import evals as evals_api
 from bia.api import inventory as inventory_api
+from bia.api import orchestrations as orchestrations_api
 from bia.api import rag as rag_api
 from bia.api import runtime as runtime_api
 from bia.api import tracing as tracing_api
@@ -24,7 +25,7 @@ from bia.settings.config import LogLevel, get_settings
 
 logger = logging.getLogger(__name__)
 
-_CORS_METHODS = ["GET", "POST", "PATCH"]
+_CORS_METHODS = ["GET", "POST", "PATCH", "DELETE"]
 _CORS_HEADERS = ["Authorization", "Content-Type"]
 
 
@@ -113,6 +114,7 @@ def create_app() -> FastAPI:
     application.include_router(builder_api.router)
     application.include_router(evals_api.router)
     application.include_router(inventory_api.router)
+    application.include_router(orchestrations_api.router)
     logger.info("Application started in %s environment", settings.environment.value)
     return application
 

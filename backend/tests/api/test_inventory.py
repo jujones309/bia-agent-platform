@@ -72,6 +72,7 @@ def test_orchestrations_inventory_keeps_the_steps_nested_in_their_flow(
         name="Agent Builder",
         description="Crea agentes",
         orchestration_type=OrchestrationType.SEQUENTIAL,
+        is_system=False,
         steps=[step],
     )
     app.dependency_overrides[get_session] = lambda: sentinel.session

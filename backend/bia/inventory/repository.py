@@ -14,6 +14,7 @@ from bia.inventory.artifacts import (
     OrchestrationInventoryItem,
     OrchestrationStepInventoryItem,
 )
+from bia.orchestrations.flows import BUILDER_FLOW_ID
 
 
 def list_agent_inventory(session: Session) -> list[AgentInventoryItem]:
@@ -70,7 +71,7 @@ def _list_steps_by_flow(session: Session) -> dict[UUID, list[OrchestrationStepIn
 
 
 def list_orchestration_inventory(session: Session) -> list[OrchestrationInventoryItem]:
-    """Lists every registered flow with its steps, agents and models.
+    """Lists every flow in force with its steps, agents and models.
 
     Exists so one call shows how agents combine; used by the inventory API.
 
@@ -84,7 +85,11 @@ def list_orchestration_inventory(session: Session) -> list[OrchestrationInventor
     sql = load_sql(DatabaseTable.ORCHESTRATIONS, SqlOperation.LIST)
     return [
         OrchestrationInventoryItem.model_validate(
-            {**row, "steps": steps_by_flow.get(row["id"], [])}
+            {
+                **row,
+                "is_system": row["id"] == BUILDER_FLOW_ID,
+                "steps": steps_by_flow.get(row["id"], []),
+            }
         )
         for row in session.execute(text(sql)).mappings()
     ]
