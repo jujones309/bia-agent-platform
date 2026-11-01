@@ -4,9 +4,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from bia.agents.repository import AgentNotFoundError
 from bia.api.dependencies import get_session
 from bia.tracing.artifacts import AgentMetrics, RunOrigin, RunRecord
-from bia.tracing.repository import AgentNotFoundError, get_agent_metrics, list_runs
+from bia.tracing.repository import get_agent_metrics, list_runs
 
 _DEFAULT_RUNS_LIMIT = 50
 _MAX_RUNS_LIMIT = 200

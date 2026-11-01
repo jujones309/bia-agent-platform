@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from bia.agents.repository import AgentNotFoundError
 from bia.api import tracing as tracing_router
 from bia.api.dependencies import get_session
 from bia.api.main import app
@@ -17,7 +18,6 @@ from bia.tracing.artifacts import (
     RunStepRecord,
     StepType,
 )
-from bia.tracing.repository import AgentNotFoundError
 
 
 def _run_with_one_step() -> RunRecord:

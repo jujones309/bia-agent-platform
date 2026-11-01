@@ -4,10 +4,11 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import Connection
 
+from bia.agents.repository import AgentNotFoundError
 from bia.database.connection import database_session
 from bia.tracing.artifacts import RunOrigin, RunStatus, RunStepDraft, StepType
 from bia.tracing.recorder import RunRecorder
-from bia.tracing.repository import AgentNotFoundError, get_agent_metrics, list_runs
+from bia.tracing.repository import get_agent_metrics, list_runs
 from tests.tracing.seed import insert_agent, insert_agent_version, insert_finished_run
 
 

@@ -46,6 +46,10 @@ class SqlOperation(StrEnum):
     LIST_BY_RUNS = "list_by_runs"
     METRICS_BY_AGENT = "metrics_by_agent"
     GET_ACTIVE = "get_active"
+    LOCK_BY_ID = "lock_by_id"
+    SET_ACTIVE_VERSION = "set_active_version"
+    LIST_BY_AGENT = "list_by_agent"
+    GET_BY_NUMBER = "get_by_number"
 
 
 class SqlFileNotFoundError(FileNotFoundError):

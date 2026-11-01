@@ -4,16 +4,9 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from bia.agents.repository import AgentNotFoundError
 from bia.database.queries import DatabaseTable, SqlOperation, load_sql
 from bia.tracing.artifacts import AgentMetrics, RunOrigin, RunRecord, RunStatus, RunStepRecord
-
-
-class AgentNotFoundError(LookupError):
-    """Signals that metrics were requested for an agent that does not exist.
-
-    Exists so an unknown agent is not confused with an agent without runs. Raised by
-    `get_agent_metrics` and translated to a 404 by `bia/api/tracing.py`.
-    """
 
 
 def list_steps_of_runs(session: Session, run_ids: list[UUID]) -> dict[UUID, list[RunStepRecord]]:
