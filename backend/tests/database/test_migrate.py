@@ -5,6 +5,13 @@ from bia.database.migrate import apply_schema, apply_seeds
 from bia.database.queries import DatabaseTable
 
 _PG_TABLES = table("pg_tables", column("tablename"), column("schemaname"))
+_PG_COLUMNS = table(
+    "columns",
+    column("table_schema"),
+    column("table_name"),
+    column("column_name"),
+    schema="information_schema",
+)
 _MODELS = table("models", column("size"), column("input_cost_per_million"))
 
 
@@ -33,3 +40,18 @@ def test_seeds_can_run_twice_without_duplicating_models(integration_engine: Engi
 
     assert sorted(row.size for row in rows) == ["embedding", "large", "small"]
     assert all(row.input_cost_per_million > 0 for row in rows)
+
+
+def test_migration_leaves_the_retirement_columns_in_place(integration_engine: Engine) -> None:
+    """Verifies the columns the current reads filter by exist after migrating twice."""
+    for _ in range(2):
+        with database_session(integration_engine) as session:
+            apply_schema(session)
+
+    with database_session(integration_engine) as session:
+        query = select(_PG_COLUMNS.c.table_name).where(
+            _PG_COLUMNS.c.table_schema == "public", _PG_COLUMNS.c.column_name == "retired_at"
+        )
+        tables = set(session.scalars(query))
+
+    assert tables == {"eval_cases", "knowledge_documents", "orchestrations"}

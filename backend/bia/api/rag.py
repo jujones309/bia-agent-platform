@@ -15,14 +15,39 @@ from bia.rag.artifacts import (
     IngestionResult,
     KnowledgeBase,
     KnowledgeBaseDraft,
+    KnowledgeDocument,
     KnowledgeSearchResult,
 )
 from bia.rag.chunking import InvalidDocumentError
 from bia.rag.ingestion import ingest_document
-from bia.rag.repository import KnowledgeBaseNotFoundError, insert_knowledge_base
+from bia.rag.repository import (
+    KnowledgeBaseNotFoundError,
+    KnowledgeDocumentNotFoundError,
+    get_knowledge_base,
+    insert_knowledge_base,
+    list_documents,
+    list_knowledge_bases,
+    retire_document,
+)
 from bia.rag.retrieval import search_knowledge
 
 router = APIRouter(prefix="/knowledge-bases", tags=["knowledge"])
+
+
+@router.get("", response_model=list[KnowledgeBase])
+def get_knowledge_bases(session: Annotated[Session, Depends(get_session)]) -> list[KnowledgeBase]:
+    """Lists the knowledge bases.
+
+    Exists so a person can choose a base for a spec and manage the existing ones; served as
+    `GET /knowledge-bases`.
+
+    Args:
+        session: The session of the request.
+
+    Returns:
+        list[KnowledgeBase]: every base, ordered by name.
+    """
+    return list_knowledge_bases(session)
 
 
 @router.post("", response_model=KnowledgeBase, status_code=status.HTTP_201_CREATED)
@@ -41,6 +66,85 @@ def post_knowledge_base(
         KnowledgeBase: the new base.
     """
     return insert_knowledge_base(session, draft)
+
+
+@router.get("/{knowledge_base_id}", response_model=KnowledgeBase)
+def get_knowledge_base_by_id(
+    knowledge_base_id: UUID, session: Annotated[Session, Depends(get_session)]
+) -> KnowledgeBase:
+    """Retrieves one knowledge base.
+
+    Exists so the page of a base can name it; served as `GET /knowledge-bases/{id}`.
+
+    Args:
+        knowledge_base_id: The base to look up.
+        session: The session of the request.
+
+    Returns:
+        KnowledgeBase: the base.
+
+    Raises:
+        HTTPException: A 404 if the base does not exist.
+    """
+    try:
+        return get_knowledge_base(session, knowledge_base_id)
+    except KnowledgeBaseNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+
+
+@router.get("/{knowledge_base_id}/documents", response_model=list[KnowledgeDocument])
+def get_documents(
+    knowledge_base_id: UUID, session: Annotated[Session, Depends(get_session)]
+) -> list[KnowledgeDocument]:
+    """Lists the current documents of a knowledge base.
+
+    Exists so a person can see what a base holds; served as `GET /knowledge-bases/{id}/documents`.
+
+    Args:
+        knowledge_base_id: The base to look up.
+        session: The session of the request.
+
+    Returns:
+        list[KnowledgeDocument]: its documents, ordered by title.
+
+    Raises:
+        HTTPException: A 404 if the base does not exist.
+    """
+    try:
+        get_knowledge_base(session, knowledge_base_id)
+    except KnowledgeBaseNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+    return list_documents(session, knowledge_base_id)
+
+
+@router.delete(
+    "/{knowledge_base_id}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_document(
+    knowledge_base_id: UUID,
+    document_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+) -> None:
+    """Retires a document, so agents stop retrieving it while past traces keep what they cited.
+
+    Exists so outdated knowledge can be removed without SQL; served as
+    `DELETE /knowledge-bases/{id}/documents/{document_id}`.
+
+    Args:
+        knowledge_base_id: The base the document belongs to.
+        document_id: The document to retire.
+        session: The session of the request.
+
+    Returns:
+        None: the response has no body.
+
+    Raises:
+        HTTPException: A 404 if the base has no current document with that identifier.
+    """
+    try:
+        retire_document(session, knowledge_base_id, document_id)
+    except KnowledgeDocumentNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
 
 @router.post("/{knowledge_base_id}/ingest", response_model=IngestionResult)

@@ -12,13 +12,15 @@ from bia.catalog.models.repository import EmbeddingModelUnavailableError
 from bia.providers.artifacts import TokenUsage
 from bia.providers.base import ProviderError
 from bia.rag.artifacts import (
+    DocumentType,
     IngestionResult,
     KnowledgeBase,
+    KnowledgeDocument,
     KnowledgeSearchResult,
     RetrievedChunk,
 )
 from bia.rag.chunking import InvalidDocumentError
-from bia.rag.repository import KnowledgeBaseNotFoundError
+from bia.rag.repository import KnowledgeBaseNotFoundError, KnowledgeDocumentNotFoundError
 
 _DOCUMENT_BODY = {"title": "Tarifas", "document_type": "tariff", "content": "# A\nTexto"}
 _USAGE = TokenUsage(input_tokens=4, output_tokens=0)
@@ -219,3 +221,103 @@ def test_search_explains_why_it_could_not_run(
 def test_knowledge_endpoints_require_credentials() -> None:
     """Verifies the knowledge stays behind the shared password."""
     assert TestClient(app).get(f"/knowledge-bases/{uuid4()}/search?q=kWh").status_code == 401
+
+
+def _base() -> KnowledgeBase:
+    """Builds a knowledge base.
+
+    Returns:
+        KnowledgeBase: the base.
+    """
+    return KnowledgeBase(
+        id=uuid4(), name="Facturación", description="Tarifas", created_at=datetime.now(UTC)
+    )
+
+
+def test_list_answers_with_every_base(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies the selector of the spec form has something to offer."""
+    base = _base()
+    monkeypatch.setattr(rag_router, "list_knowledge_bases", lambda _session: [base])
+
+    response = client.get("/knowledge-bases")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [str(base.id)]
+
+
+def test_read_one_base_answers_404_when_it_does_not_exist(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies the page of a wrong base explains it."""
+    error = KnowledgeBaseNotFoundError("There is no base")
+    monkeypatch.setattr(rag_router, "get_knowledge_base", _Raiser(error))
+
+    response = client.get(f"/knowledge-bases/{uuid4()}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "There is no base"
+
+
+def test_documents_answer_with_their_chunks(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies the documents of the base in the path are returned, with their size."""
+    base = _base()
+    document = KnowledgeDocument(
+        id=uuid4(),
+        knowledge_base_id=base.id,
+        title="Tarifas",
+        document_type=DocumentType.TARIFF,
+        valid_from=None,
+        valid_until=None,
+        chunk_count=6,
+        created_at=datetime.now(UTC),
+    )
+    monkeypatch.setattr(rag_router, "get_knowledge_base", lambda _session, _id: base)
+    monkeypatch.setattr(rag_router, "list_documents", lambda _session, _id: [document])
+
+    response = client.get(f"/knowledge-bases/{base.id}/documents")
+
+    assert response.status_code == 200
+    assert response.json()[0]["chunk_count"] == 6
+
+
+def test_documents_of_an_unknown_base_answer_404_instead_of_an_empty_list(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies a wrong identifier is not confused with a base that has no documents."""
+    error = KnowledgeBaseNotFoundError("There is no base")
+    monkeypatch.setattr(rag_router, "get_knowledge_base", _Raiser(error))
+
+    assert client.get(f"/knowledge-bases/{uuid4()}/documents").status_code == 404
+
+
+def test_delete_document_retires_the_one_in_the_path_and_answers_without_a_body(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies both identifiers reach the write, since a document belongs to one base."""
+    retired = []
+    monkeypatch.setattr(
+        rag_router,
+        "retire_document",
+        lambda _session, base_id, document_id: retired.append((base_id, document_id)),
+    )
+    base_id, document_id = uuid4(), uuid4()
+
+    response = client.delete(f"/knowledge-bases/{base_id}/documents/{document_id}")
+
+    assert response.status_code == 204
+    assert retired == [(base_id, document_id)]
+
+
+def test_delete_document_answers_404_when_the_base_does_not_have_it(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies a wrong or repeated removal is explained."""
+    error = KnowledgeDocumentNotFoundError("It has no such document")
+    monkeypatch.setattr(rag_router, "retire_document", _Raiser(error))
+
+    response = client.delete(f"/knowledge-bases/{uuid4()}/documents/{uuid4()}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "It has no such document"

@@ -81,6 +81,23 @@ class DocumentDraft(BaseModel):
         return self
 
 
+class KnowledgeDocument(BaseModel):
+    """Represents a current document of a knowledge base, without its text.
+
+    Exists as the contract of `GET /knowledge-bases/{id}/documents`, so a person can see what a base
+    holds; produced by `list_documents`.
+    """
+
+    id: UUID
+    knowledge_base_id: UUID
+    title: str
+    document_type: DocumentType
+    valid_from: date | None
+    valid_until: date | None
+    chunk_count: int
+    created_at: datetime
+
+
 class ChunkMetadata(BaseModel):
     """Holds what an agent needs to cite a fragment.
 

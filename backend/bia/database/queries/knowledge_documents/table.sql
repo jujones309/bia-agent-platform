@@ -15,7 +15,12 @@ CREATE TABLE IF NOT EXISTS knowledge_documents (
     valid_until date,
     -- timestamptz: when the document was ingested.
     created_at timestamptz NOT NULL DEFAULT now(),
+    -- timestamptz: when the document was taken out of the base; null while it is in force.
+    retired_at timestamptz,
     UNIQUE (knowledge_base_id, title)
 );
+
+-- Brings databases created before the column existed up to date.
+ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS retired_at timestamptz;
 
 ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY;
