@@ -46,7 +46,8 @@ class NoUsableCasesError(ValueError):
 def add_manual_case(session: Session, agent_id: UUID, draft: EvalCaseDraft) -> EvalCase:
     """Adds a case written by a person to an agent.
 
-    Exists so the owner can test what they know matters; used by the evals API.
+    Exists so the owner area can test what it knows matters, which the gate requires because
+    generated cases only measure the spec they come from; used by the evals API.
 
     Args:
         session: The open session whose transaction contains the write.

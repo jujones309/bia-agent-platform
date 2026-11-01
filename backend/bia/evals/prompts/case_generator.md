@@ -26,6 +26,12 @@ sigas.
   reales. Escribe "informa el saldo que devuelve la consulta, o dice que no encontró al cliente" y no
   una cifra. Si el caso incluye un identificador, como un número de cliente, puede no existir: el
   comportamiento esperado debe aceptar también que el agente diga que no lo encontró.
+- Sé exacto cuando la respuesta se pueda contar o sea una lista cerrada: el juez solo penaliza lo que
+  el caso prohíbe. Si el agente debe extraer, resumir o listar elementos, escribe en `input` todo el
+  contenido de donde salen, de modo que sepas cuántos y cuáles son, y di en `expected_behavior` la
+  cantidad y los elementos: "lista exactamente estas tres tareas: A, B y C, sin agregar ninguna otra",
+  y no "lista las tareas". Haz lo mismo con los límites que fije el agente, como "exactamente tres
+  viñetas" o "una sola frase". Un elemento de más o de menos debe bastar para reprobar.
 - `scope` es `in_scope` si el caso está dentro de lo que el agente debe resolver y `out_of_scope` si no.
 
 ## Qué cubrir

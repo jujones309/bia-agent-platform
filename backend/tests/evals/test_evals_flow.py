@@ -23,6 +23,7 @@ from bia.database.migrate import apply_schema, apply_seeds
 from bia.evals import runner as runner_module
 from bia.evals.artifacts import (
     CaseScope,
+    EvalCase,
     EvalCaseDraft,
     EvalCaseOrigin,
     EvalJudgement,
@@ -139,6 +140,50 @@ def _queue_generation(provider: FakeModelProvider, count: int = 10) -> None:
         for i, scope in enumerate(scopes)
     ]
     provider.queue_structured(GeneratedCases(cases=cases))
+
+
+def _add_owner_cases(connection: Connection, agent_id: UUID, count: int = 3) -> list[EvalCase]:
+    """Adds the cases a person of the owner area would write.
+
+    Args:
+        connection: The connection of the test's transaction.
+        agent_id: The agent the cases evaluate.
+        count: How many cases.
+
+    Returns:
+        list[EvalCase]: the stored cases.
+    """
+    drafts = [
+        EvalCaseDraft(input=f"Caso del área {i}", expected_behavior="Responde")
+        for i in range(count)
+    ]
+    with database_session(connection) as session:
+        return [add_manual_case(session, agent_id, draft) for draft in drafts]
+
+
+def _run_failing(
+    connection: Connection, provider: FakeModelProvider, agent_id: UUID, failing: list[UUID]
+) -> None:
+    """Runs the evals with the judge rejecting exactly the given cases.
+
+    Exists because cases created in one transaction share their timestamp, so their order says
+    nothing about their origin.
+
+    Args:
+        connection: The connection of the test's transaction.
+        provider: The provider to script.
+        agent_id: The agent to evaluate.
+        failing: The cases the judge rejects.
+
+    Returns:
+        None: the results are stored.
+    """
+    with database_session(connection) as session:
+        cases = list_cases(session, agent_id)
+    for case in cases:
+        provider.queue_text("Respuesta")
+        provider.queue_structured(_FAIL if case.id in failing else _PASS)
+    run_evals(connection, agent_id)
 
 
 def _run_with_verdicts(
@@ -278,7 +323,7 @@ def test_eval_run_moves_a_draft_to_testing_and_stores_each_result(
     assert _status_of(connection, agent_id) is AgentStatus.TESTING
     assert (report.total_cases, report.passed_cases) == (8, 7)
     assert report.pass_percent == 87.5
-    assert report.passes_gate is True
+    assert report.passes_gate is False  # the numbers reach, but no case comes from the owner area
     assert report.outcomes[7].result.judge_reason == "Inventó el saldo"
     assert report.outcomes[7].result.score == 10.0
     assert sum(1 for run in agent_runs if run.origin is RunOrigin.EVAL) == 8
@@ -331,9 +376,12 @@ def test_gate_publishes_at_the_threshold_and_the_agent_becomes_findable(
 ) -> None:
     """Verifies the end of the builder's flow: only now can reuse find this agent."""
     agent_id = _new_agent(connection)
-    _queue_generation(provider)
-    generate_cases(connection, agent_id)
-    _run_with_verdicts(connection, provider, agent_id, passes=8, fails=2)
+    _queue_generation(provider, count=8)
+    generated = generate_cases(connection, agent_id)
+    _add_owner_cases(connection, agent_id)
+    with database_session(connection) as session:
+        remove_case(session, agent_id, generated[-1].id)
+    _run_failing(connection, provider, agent_id, [case.id for case in generated[:2]])
     embedding = provider.embed(["Responde dudas de facturas"], "any").embeddings[0]
 
     with database_session(connection) as session:
@@ -343,6 +391,65 @@ def test_gate_publishes_at_the_threshold_and_the_agent_becomes_findable(
 
     assert detail.agent.status is AgentStatus.PUBLISHED
     assert [candidate.agent_id for candidate in candidates] == [agent_id]
+
+
+def test_gate_asks_for_cases_of_the_owner_area_even_if_every_generated_one_passes(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies the spec cannot approve itself: only the owner area can say the agent is useful."""
+    agent_id = _new_agent(connection)
+    _queue_generation(provider)
+    generate_cases(connection, agent_id)
+    _add_owner_cases(connection, agent_id, count=2)
+    _run_with_verdicts(connection, provider, agent_id, passes=12, fails=0)
+
+    with database_session(connection) as session:
+        report = build_report(session, agent_id)
+        with pytest.raises(PublishRejectedError, match="owner area wrote 2 cases"):
+            publish_agent(session, agent_id)
+
+    assert (report.owner_cases, report.passed_owner_cases) == (2, 2)
+    assert report.minimum_owner_cases == 3
+    assert report.pass_percent == 100.0
+
+
+def test_generated_cases_cannot_make_up_for_failed_cases_of_the_owner_area(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies 11 of 13 is not enough when two of the three cases that measure usefulness fail."""
+    agent_id = _new_agent(connection)
+    _queue_generation(provider)
+    generate_cases(connection, agent_id)
+    owner_cases = _add_owner_cases(connection, agent_id)
+    _run_failing(connection, provider, agent_id, [case.id for case in owner_cases[:2]])
+
+    with database_session(connection) as session:
+        report = build_report(session, agent_id)
+        with pytest.raises(PublishRejectedError) as caught:
+            publish_agent(session, agent_id)
+
+    assert report.pass_percent == pytest.approx(84.62)
+    assert report.passed_owner_cases == 1
+    failing = {outcome.case.id for outcome in caught.value.rejection.failing_cases}
+    assert failing == {case.id for case in owner_cases[:2]}
+
+
+def test_retiring_a_case_of_the_owner_area_takes_it_out_of_the_requirement(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies retiring cannot be used to keep the requirement satisfied with fewer cases."""
+    agent_id = _new_agent(connection)
+    _queue_generation(provider)
+    generate_cases(connection, agent_id)
+    owner_cases = _add_owner_cases(connection, agent_id)
+    _run_with_verdicts(connection, provider, agent_id, passes=13, fails=0)
+
+    with database_session(connection) as session:
+        assert build_report(session, agent_id).passes_gate is True
+        remove_case(session, agent_id, owner_cases[0].id)
+        report = build_report(session, agent_id)
+
+    assert (report.owner_cases, report.passes_gate) == (2, False)
 
 
 def test_gate_rejects_too_few_cases_even_if_all_of_them_pass(
@@ -407,7 +514,8 @@ def test_editing_a_published_agent_requires_passing_again(
     agent_id = _new_agent(connection)
     _queue_generation(provider, count=8)
     generate_cases(connection, agent_id)
-    _run_with_verdicts(connection, provider, agent_id, passes=8, fails=0)
+    _add_owner_cases(connection, agent_id)
+    _run_with_verdicts(connection, provider, agent_id, passes=11, fails=0)
     with database_session(connection) as session:
         publish_agent(session, agent_id)
 
@@ -429,7 +537,8 @@ def test_rolling_back_to_an_approved_version_can_be_published_again_at_no_cost(
     agent_id = _new_agent(connection)
     _queue_generation(provider, count=8)
     generate_cases(connection, agent_id)
-    _run_with_verdicts(connection, provider, agent_id, passes=8, fails=0)
+    _add_owner_cases(connection, agent_id)
+    _run_with_verdicts(connection, provider, agent_id, passes=11, fails=0)
     with database_session(connection) as session:
         publish_agent(session, agent_id)
         add_version(session, agent_id, AgentSpecPatch(system_prompt="Mala idea"))
@@ -496,7 +605,8 @@ def test_publishing_registers_the_flow_of_the_agent_in_the_same_step(
     agent_id = _new_agent(connection)
     _queue_generation(provider)
     generate_cases(connection, agent_id)
-    _run_with_verdicts(connection, provider, agent_id, passes=10, fails=0)
+    _add_owner_cases(connection, agent_id)
+    _run_with_verdicts(connection, provider, agent_id, passes=13, fails=0)
 
     with database_session(connection) as session:
         before = list_orchestration_inventory(session)

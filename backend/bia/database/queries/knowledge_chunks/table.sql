@@ -15,4 +15,7 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Keeps the semantic search fast as the fragments grow; see search_by_embedding.sql.
+CREATE INDEX IF NOT EXISTS knowledge_chunks_embedding_index ON knowledge_chunks USING hnsw (embedding vector_cosine_ops);
+
 ALTER TABLE knowledge_chunks ENABLE ROW LEVEL SECURITY;

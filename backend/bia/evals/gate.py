@@ -11,6 +11,7 @@ from bia.agents.repository import (
     set_agent_status,
 )
 from bia.evals.artifacts import (
+    EvalCaseOrigin,
     EvalCaseOutcome,
     EvalReport,
     EvalVerdict,
@@ -108,7 +109,8 @@ def build_report(session: Session, agent_id: UUID) -> EvalReport:
 
     Exists as the only definition of passing, shared by the reports and by publishing. It reads the
     latest result of every current case on that version, so a case without one counts against it,
-    and editing the agent starts from zero.
+    and editing the agent starts from zero. The cases of the owner area must also reach the
+    threshold on their own, or the generated ones could make up for those that measure usefulness.
 
     Args:
         session: The open session to read through.
@@ -125,6 +127,8 @@ def build_report(session: Session, agent_id: UUID) -> EvalReport:
     results = list_latest_results(session, version.id)
     outcomes = [EvalCaseOutcome(case=case, result=results.get(case.id)) for case in cases]
     passed = sum(1 for outcome in outcomes if _passed(outcome))
+    owner_outcomes = [outcome for outcome in outcomes if _is_from_owner(outcome)]
+    passed_owner = sum(1 for outcome in owner_outcomes if _passed(outcome))
     return EvalReport(
         agent_id=agent_id,
         agent_version_id=version.id,
@@ -134,9 +138,14 @@ def build_report(session: Session, agent_id: UUID) -> EvalReport:
         total_cases=len(cases),
         passed_cases=passed,
         pass_percent=percent_of(passed, len(cases)) if cases else 0.0,
+        minimum_owner_cases=EVALS_CONFIG.minimum_owner_cases,
+        owner_cases=len(owner_outcomes),
+        passed_owner_cases=passed_owner,
         passes_gate=(
             len(cases) >= EVALS_CONFIG.minimum_cases_to_publish
             and reaches_threshold(passed, len(cases))
+            and len(owner_outcomes) >= EVALS_CONFIG.minimum_owner_cases
+            and reaches_threshold(passed_owner, len(owner_outcomes))
         ),
         outcomes=outcomes,
     )
@@ -174,6 +183,18 @@ def _passed(outcome: EvalCaseOutcome) -> bool:
     return outcome.result is not None and outcome.result.verdict is EvalVerdict.PASS
 
 
+def _is_from_owner(outcome: EvalCaseOutcome) -> bool:
+    """Tells whether a case was written by a person of the owner area.
+
+    Args:
+        outcome: The case with its latest result.
+
+    Returns:
+        bool: True if a person wrote it.
+    """
+    return outcome.case.origin is EvalCaseOrigin.MANUAL
+
+
 def _build_rejection(report: EvalReport) -> PublishRejection:
     """Writes why a report does not pass the gate.
 
@@ -186,7 +207,9 @@ def _build_rejection(report: EvalReport) -> PublishRejection:
     message = (
         f"Version {report.version_number} passed {report.passed_cases} of {report.total_cases} "
         f"cases ({report.pass_percent} %); publishing needs {report.threshold_percent} % "
-        f"over at least {report.minimum_cases} cases"
+        f"over at least {report.minimum_cases} cases. The owner area wrote "
+        f"{report.owner_cases} cases and {report.passed_owner_cases} passed; publishing needs "
+        f"{report.threshold_percent} % over at least {report.minimum_owner_cases} of them"
     )
     return PublishRejection(
         message=message,

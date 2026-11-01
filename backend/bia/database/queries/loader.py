@@ -54,6 +54,7 @@ class SqlOperation(StrEnum):
     GET_BY_NUMBER = "get_by_number"
     DELETE_BY_DOCUMENT = "delete_by_document"
     SEARCH_BY_EMBEDDING = "search_by_embedding"
+    CONFIGURE_SEARCH = "configure_search"
     SET_STATUS = "set_status"
     LIST_LATEST_BY_VERSION = "list_latest_by_version"
     LIST_SUCCEEDED_BY_ORIGIN = "list_succeeded_by_origin"

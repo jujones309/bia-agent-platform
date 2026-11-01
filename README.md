@@ -57,6 +57,7 @@ frontend con la [guía de la fase 12](#guía-fase-12--frontend).
 | 14 | Entrega | En curso: faltan el video y las invitaciones |
 | Mejoras, bloque 3 | Administración desde la interfaz | Terminado en la rama, sin desplegar |
 | Mejoras, tarea 4.2 | Memoria de conversación | Terminada en la rama, sin desplegar |
+| Mejoras, tareas 4.3 a 4.6 | Casos del área, expectativas exactas, umbral e índice de RAG | Terminadas en la rama, sin desplegar |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
 el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime,
@@ -702,9 +703,9 @@ agente que ya tenía `knowledge_base_id` sin la herramienta no acepta ediciones 
 agregue la herramienta o quite la base.
 
 Indica en el system prompt que responda solo con lo recuperado y que cite documento y sección. La
-búsqueda no tiene umbral de similitud: una pregunta fuera de tema igual devuelve fragmentos, con una
-similitud baja (0,1 en la prueba con "la capital de Francia", contra 0,65-0,85 en preguntas de
-facturación), y es el modelo el que debe descartarlos.
+búsqueda solo devuelve fragmentos con similitud desde 0,35, así que una pregunta sin relación vuelve
+vacía; una cercana al tema puede pasar, y ahí el modelo debe descartarlos (ver las
+[tareas 4.3 a 4.6](#guía-tareas-43-a-46-de-mejoras--calidad-de-los-evals-y-de-rag)).
 
 ### Qué queda en la traza
 
@@ -720,8 +721,6 @@ detalle queda en los logs.
   no aparecen en las métricas ni en los inventarios.
 - **Reingerir siempre genera los embeddings de nuevo**, aunque el texto no haya cambiado.
 - **`POST /knowledge-bases` no evita nombres repetidos**, y las bases no se pueden borrar.
-- **La búsqueda recorre todos los chunks de la base**, porque no hay índice vectorial. Basta para unos
-  pocos documentos; una base grande necesitará uno.
 
 ### Pruebas de esta fase
 
@@ -867,7 +866,7 @@ AGENT=<id del agente>
 # 1. Generar los casos (8 a 10, con al menos uno fuera de alcance)
 curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/$AGENT/eval-cases/generate
 
-# 2. Opcional: agregar casos propios
+# 2. Agregar los casos del área dueña: al menos 3 son obligatorios para publicar
 curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/$AGENT/eval-cases \
   -H 'Content-Type: application/json' \
   -d '{"input": "¿Cómo hago un reclamo?", "expected_behavior": "Explica el procedimiento de reclamo"}'
@@ -890,7 +889,9 @@ llamar al juez.
 ### Qué exige el gate
 
 - **Al menos 80 % de los casos en `pass`**, sobre un mínimo de 8 casos. Un caso aprueba con puntaje desde
-  70. Estos números están en [config.py](backend/bia/evals/config.py).
+  70.
+- **Al menos 80 % de los casos del área dueña en `pass`**, sobre un mínimo de 3. Son los casos de origen
+  `manual`. Estos números están en [config.py](backend/bia/evals/config.py).
 - **Se mide la versión activa**, con el resultado más reciente de cada caso. Un caso sin resultado en esa
   versión cuenta en contra, así que un caso nuevo exige correr de nuevo.
 - **Publicar no ejecuta nada ni cuesta.** Solo lee los resultados guardados. Si no alcanza, responde 409
@@ -1521,3 +1522,109 @@ INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/runtime tests
 ```
 
 Se probó con un provider simulado: no se ha comprobado aún una pregunta de seguimiento contra OpenAI ni en un navegador.
+
+---
+
+## Guía: tareas 4.3 a 4.6 de mejoras — Calidad de los evals y de RAG
+
+**Requiere migración** por el índice nuevo, desde `backend/`:
+
+```bash
+uv run python -m bia.database.migrate
+```
+
+Los prompts del generador y del juez pasan a una versión nueva solos al arrancar la API.
+
+### 4.3 Casos del área dueña
+
+Los casos generados salen de la spec que evalúan, así que publicar ahora exige también casos escritos por personas. Son los de
+origen `manual`, que se agregan en la pantalla de evals (**Agregar un caso del área dueña**) o con `POST /agents/{id}/eval-cases`.
+
+- **El gate pide al menos 3, y ellos solos deben llegar al 80 %**, además del 80 % sobre todos los casos. Sin esa segunda regla, un
+  agente con 2 de 3 casos del área reprobados publicaría con 11 de 13 (84,6 %). Con 3 casos, deben aprobar los 3.
+- **`GET /agents/{id}/evals` trae** `minimum_owner_cases`, `owner_cases` y `passed_owner_cases`, y el 409 de publicar explica lo que falta.
+- **Los agentes ya publicados siguen publicados**, pero la regla les aplica al volver a publicarlos. `Bia Facturación` y
+  `Resumen de reuniones` tienen 2 casos manuales en producción: cada uno necesita al menos uno más y correr evals tras cualquier edición.
+
+**Limitación:** hasta que exista la identidad por persona (tarea 2.1), nada comprueba que el autor sea del área. La plataforma exige los
+casos, no su procedencia.
+
+### 4.4 Expectativas exactas
+
+Cuando la respuesta se puede contar, el generador incluye en `input` todo el contenido y fija en `expected_behavior` la cantidad y los
+elementos, como "lista exactamente dos tareas: … No agrega ninguna otra". El juez cuenta los elementos, y uno de más o de menos es una falla.
+
+Se comprobó con el modelo real y un agente de resumen de reuniones creado en una base local:
+
+| Prueba | Resultado |
+|---|---|
+| Casos generados con expectativa exacta | 6 de 10, y uno más que exige cero tareas |
+| Respuesta correcta contra un caso exacto | Aprobó 3 de 3, con puntaje 100 |
+| Respuesta con una tarea de más contra el mismo caso | Reprobó 3 de 3, con puntaje de 50 a 60 |
+| Corrida completa del agente | 9 de 10. El caso fallido es real: el agente de prueba dio una receta fuera de alcance |
+
+**Limitaciones:** la exactitud del generador depende del prompt, porque el texto libre no se valida, y solo se probó un agente.
+
+### 4.5 Umbral de similitud
+
+`minimum_similarity` vale 0,35 en [config.py](backend/bia/rag/config.py) y aplica a la herramienta `buscar_conocimiento` y a
+`GET /knowledge-bases/{id}/search`. Una búsqueda sin fragmentos devuelve `chunks: []` y conserva su costo.
+
+Se calibró con `text-embedding-3-small` sobre los 3 documentos de [data/knowledge/](data/knowledge/), mirando el fragmento más cercano:
+
+| Preguntas | Cuántas | Similitud | Con 0,35 |
+|---|---|---|---|
+| De facturación, escritas para la prueba | 25 | 0,373 a 0,854 | Conservan fragmentos las 25 |
+| Fuera de la base, escritas para la prueba, con similitud baja | 16 | 0,110 a 0,346 | Vuelven vacías las 16 |
+| Fuera de la base, con vocabulario parecido, como "¿Dónde pago la factura del agua?" | 9 | 0,362 a 0,558 | Devuelven fragmentos las 9 |
+| Consultas reales de las trazas de producción | 9 | 0,551 a 0,775 | Conservan sus 5 fragmentos las 9, el menor con 0,441 |
+
+Los rangos se solapan, así que se priorizó no perder respuestas válidas. Las preguntas cercanas al tema **siguen dependiendo del modelo**,
+porque ningún umbral las separa: "¿Cuál es el interés de mora?" (0,373) queda por debajo de "¿Dónde pago la factura del agua?" (0,558).
+
+**Limitaciones:** el margen es corto a ambos lados (0,346 y 0,373), los documentos son ficticios, y solo hay 9 consultas reales, todas de
+facturación y reescritas por el modelo. Conviene revisarlo con consultas de clientes y al sumar bases de otros temas. Cambiar el modelo de
+embeddings exige calibrar de nuevo.
+
+### 4.6 Índice vectorial
+
+`knowledge_chunks` tiene un índice HNSW por distancia coseno. Cada búsqueda elige su ruta según el tamaño de la base
+([configure_search.sql](backend/bia/database/queries/knowledge_chunks/configure_search.sql)):
+
+- **Hasta 20.000 chunks** (`exact_search_maximum_chunks`) compara de forma exacta, sin perder nada.
+- **Por encima** usa el índice, y sigue buscando hasta reunir fragmentos de esa base.
+
+La ruta exacta existe porque el índice solo falla en silencio con bases pequeñas: una de 3 chunks junto a una de 100.000 recuperó el 45 %
+de sus fragmentos, y subir `hnsw.max_scan_tuples` no lo corrigió.
+
+El volumen objetivo se fijó en 100.000 chunks en total; producción tiene 22. Medido en Docker local con 4 CPU, vectores sintéticos
+agrupados, `top_k` 5 y con la tabla ya analizada:
+
+| Base, con 100.000 chunks en la tabla | Ruta | p50 | p95 | Recall |
+|---|---|---|---|---|
+| 80.000 chunks | Índice | 7,4 ms | 8,1 ms | 0,96 |
+| 80.000 chunks, forzando búsqueda exacta, para comparar | Exacta | 308 ms | — | 1 |
+| 20.000 chunks, el peor caso de la ruta exacta | Exacta | 84 ms | 87 ms | 1 |
+| 50 chunks | Exacta | 7,8 ms | 11,4 ms | 1 |
+| 3 chunks | Exacta | 7,4 ms | 7,6 ms | 1 |
+
+Una pregunta fuera de tema sobre la base de 80.000 tarda lo mismo (8,4 ms), porque el umbral se aplica después de elegir los más cercanos.
+
+**Limitaciones y costo:**
+
+- **No se midió en Supabase ni con embeddings reales**, así que las cifras sirven para comparar rutas, no como promesa de latencia.
+- **El recall de la ruta con índice es 0,96:** en bases grandes se puede perder algún fragmento.
+- **Ocupa espacio:** el índice pesó 782 MB con 100.000 chunks y tardó 22 s en construirse con varios procesos.
+- **Requiere pgvector 0.8 o superior**, por el escaneo iterativo. Producción tiene la 0.8.2.
+- **Crearlo bloquea las escrituras de la tabla** mientras dura la migración, algo irrelevante con el volumen actual.
+
+### Pruebas de estas tareas
+
+El gate, la ruta de búsqueda, el umbral y el índice sobre SQL real requieren `INTEGRATION_DATABASE_URL`:
+
+```bash
+INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/evals tests/rag
+```
+
+Las comprobaciones con el modelo real y la medición de latencia se hicieron una vez, con scripts que no forman parte del repo. Nada de esto se ha
+probado en el despliegue, ni la pantalla de evals en un navegador.

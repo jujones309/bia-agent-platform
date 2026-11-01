@@ -194,25 +194,41 @@ def replace_document_chunks(
 
 
 def search_chunks(
-    session: Session, knowledge_base_id: UUID, query_embedding: list[float], top_k: int
+    session: Session,
+    knowledge_base_id: UUID,
+    query_embedding: list[float],
+    top_k: int,
+    minimum_similarity: float,
+    exact_search_maximum_chunks: int,
 ) -> list[RetrievedChunk]:
     """Finds the fragments of a base closest to a query, among the documents in force.
 
-    Exists as the single read of retrieval; used by `search_knowledge`.
+    Exists as the single read of retrieval; used by `search_knowledge`. The choice between an exact
+    search and the vector index lasts for the session's transaction, so it reaches
+    this search and no other.
 
     Args:
         session: The open session to read through.
         knowledge_base_id: The only base to search in.
         query_embedding: The vector of the query.
         top_k: The maximum number of fragments.
+        minimum_similarity: The similarity below which a fragment is not returned.
+        exact_search_maximum_chunks: The size up to which a base skips the vector index.
 
     Returns:
-        list[RetrievedChunk]: the fragments, closest first.
+        list[RetrievedChunk]: the fragments, closest first; empty if none is similar enough.
     """
+    configuration = {
+        "knowledge_base_id": str(knowledge_base_id),
+        "exact_search_maximum_chunks": exact_search_maximum_chunks,
+    }
+    configure_sql = load_sql(DatabaseTable.KNOWLEDGE_CHUNKS, SqlOperation.CONFIGURE_SEARCH)
+    session.execute(text(configure_sql), configuration)
     parameters = {
         "knowledge_base_id": str(knowledge_base_id),
         "query_embedding": json.dumps(query_embedding),
         "top_k": top_k,
+        "minimum_similarity": minimum_similarity,
     }
     sql = load_sql(DatabaseTable.KNOWLEDGE_CHUNKS, SqlOperation.SEARCH_BY_EMBEDDING)
     rows = session.execute(text(sql), parameters).mappings()

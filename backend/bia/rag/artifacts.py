@@ -140,7 +140,7 @@ class KnowledgeSearchResult(BaseModel):
     API, which has no run to record it in, returns it. Produced by `search_knowledge`.
     """
 
-    chunks: list[RetrievedChunk]  # closest first
+    chunks: list[RetrievedChunk]  # closest first; empty when nothing is similar enough
     model_id: UUID  # the embedding model of the query
     usage: TokenUsage
     cost: Decimal

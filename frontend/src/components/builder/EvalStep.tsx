@@ -30,6 +30,10 @@ function describeStanding(report: EvalReport): string {
   return `${report.passed_cases} de ${report.total_cases} casos aprobados (${formatPercent(report.pass_percent)}). Para publicar: ${report.threshold_percent} % sobre al menos ${report.minimum_cases} casos.`;
 }
 
+function describeOwnerStanding(report: EvalReport): string {
+  return `Casos del área dueña: ${report.passed_owner_cases} de ${report.owner_cases} aprobados. Para publicar: ${report.threshold_percent} % sobre al menos ${report.minimum_owner_cases} casos escritos por el área.`;
+}
+
 /**
  * Generates the test cases, runs the evals and publishes the agent if it passes the gate.
  *
@@ -61,6 +65,7 @@ export function EvalStep({ agent, onBack, onAgentChanged }: EvalStepProps) {
     <div className="max-w-5xl space-y-4">
       <div className="card space-y-3">
         <p className="text-sm">{describeStanding(report)}</p>
+        <p className="text-sm">{describeOwnerStanding(report)}</p>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => onBack()} disabled={isRunning} className="button-secondary">Volver a la spec</button>
           {!report.outcomes.some(isGenerated) && <button type="button" onClick={() => void run(generate)} disabled={isRunning} className="button-secondary">Generar casos</button>}

@@ -67,6 +67,18 @@ describe("EvalStep", () => {
     expect(onAgentChanged).toHaveBeenCalledOnce();
   });
 
+  it("asks for the cases of the owner area and tells them apart from the generated ones", async () => {
+    const owner = buildPassedOutcome();
+    owner.case.origin = EvalCaseOrigin.MANUAL;
+    vi.mocked(getEvalReport).mockResolvedValue(buildReport({ total_cases: 1, owner_cases: 1, passed_owner_cases: 1, outcomes: [owner] }));
+    renderStep();
+
+    expect(await screen.findByText(/Casos del área dueña: 1 de 1 aprobados.*al menos 3 casos escritos por el área/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Agregar un caso del área dueña" })).toBeInTheDocument();
+    expect(screen.getByText("Área dueña")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publicar" })).toBeDisabled();
+  });
+
   it("does not let an agent below the gate be published", async () => {
     vi.mocked(getEvalReport).mockResolvedValue({ ...PASSING, passes_gate: false, pass_percent: 50 });
     renderStep();

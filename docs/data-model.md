@@ -13,7 +13,8 @@ sus columnas a partir de este archivo. Si una columna cambia, se cambia primero 
   el rol dueño de las tablas, al que RLS no aplica.
 - `CHECK` solo fija los valores que el plan ya acordó (marcados como **cerrado**). Los
   valores **propuestos** se validan con enums en Python cuando se implemente su fase.
-- No se crean índices explícitos. Las restricciones `UNIQUE` existen por integridad, aunque
+- No se crean índices explícitos, salvo el HNSW de `knowledge_chunks.embedding`, pedido en la tarea 4.6
+  de mejoras. Las restricciones `UNIQUE` existen por integridad, aunque
   Postgres las respalde internamente con un índice.
 
 ## Orden de dependencias
@@ -182,7 +183,7 @@ Un paso dentro de un run. Único por `(run_id, step_order)`.
 | `agent_id` | `uuid` → `agents` | Agente que evalúa. |
 | `input` | `text` | Mensaje de prueba. |
 | `expected_behavior` | `text` | Qué debería hacer el agente; contra esto compara el juez. |
-| `origin` | `text` | Cerrado: `generated`, `manual`. |
+| `origin` | `text` | Cerrado: `generated`, `manual`. Los `manual` son los del área dueña, que el gate exige. |
 | `created_at` | `timestamptz` | Cuándo se creó. |
 | `retired_at` | `timestamptz` | Cuándo dejó de contar para los reportes y el gate; nulo mientras está vigente. Sus `eval_results` se conservan. |
 

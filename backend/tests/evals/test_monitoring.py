@@ -76,6 +76,9 @@ def _baseline(pass_percent: float, has_results: bool) -> EvalReport:
         total_cases=1,
         passed_cases=1 if has_results else 0,
         pass_percent=pass_percent,
+        minimum_owner_cases=3,
+        owner_cases=0,
+        passed_owner_cases=0,
         passes_gate=False,
         outcomes=[EvalCaseOutcome(case=case, result=result if has_results else None)],
     )

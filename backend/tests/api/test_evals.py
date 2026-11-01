@@ -107,6 +107,9 @@ def _report() -> EvalReport:
         total_cases=10,
         passed_cases=9,
         pass_percent=90.0,
+        minimum_owner_cases=3,
+        owner_cases=0,
+        passed_owner_cases=0,
         passes_gate=True,
         outcomes=[],
     )

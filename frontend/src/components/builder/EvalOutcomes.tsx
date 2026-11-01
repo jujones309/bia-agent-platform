@@ -2,6 +2,7 @@ import { EvalVerdictBadge, PendingBadge } from "@/components/ui/Badge";
 import { DataTable } from "@/components/ui/DataTable";
 import { MarkdownText } from "@/components/ui/MarkdownText";
 import type { EvalCaseOutcome } from "@/lib/api/types";
+import { EVAL_CASE_ORIGIN_LABEL } from "@/lib/labels";
 
 const HEADERS = ["Caso", "Comportamiento esperado", "Resultado", "Puntaje", "Razón del juez", ""];
 const EMPTY_VALUE = "—";
@@ -23,6 +24,7 @@ function OutcomeRow({ outcome: { case: evalCase, result }, isDisabled, onRetire 
     <tr key={evalCase.id} className="align-top">
       <td className="min-w-48">
         {evalCase.input}
+        <p className="text-xs text-slate-600">{EVAL_CASE_ORIGIN_LABEL[evalCase.origin]}</p>
         {result && (
           <details className="mt-1 text-slate-600">
             <summary className="cursor-pointer text-xs">Ver respuesta</summary>

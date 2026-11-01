@@ -171,7 +171,7 @@ Tampoco hay pantalla para crear bases de conocimiento: alguien técnico debe car
 - **Juez:** un LLM compara la respuesta con el comportamiento esperado y devuelve veredicto, puntaje y razón. Un caso
   aprueba desde 70 puntos.
 - **Gate:** `POST /agents/{id}/publish` exige al menos 80 % de casos aprobados, sobre un mínimo de 8, en la versión
-  activa. Un caso sin resultado cuenta en contra. Si no alcanza, responde 409 con los casos fallidos y sus razones.
+  activa, y lo mismo sobre al menos 3 casos escritos por el área dueña. Un caso sin resultado cuenta en contra. Si no alcanza, responde 409 con los casos fallidos y sus razones.
 
 ### Después de publicar
 
@@ -276,7 +276,7 @@ La regla: se construye lo que diferencia a la plataforma, y se compra lo que es 
 |---|---|---|---|
 | Trazas y paneles | Tablas `runs` y `run_steps` | **Comprar o adoptar Langfuse**, enviándole los datos desde `bia/tracing/` y manteniendo las tablas como registro de auditoría propio | Se necesitan paneles, alertas o comparar versiones de prompts |
 | Acceso a modelos | `ModelProvider` con OpenAI | **Adoptar LiteLLM** detrás del mismo contrato | Un segundo proveedor, o necesidad de failover y límites por equipo |
-| Búsqueda vectorial | pgvector, sin índice | **Mantener pgvector** y agregar un índice; pasar a una base gestionada solo si hace falta | Millones de chunks, o latencia de búsqueda que un índice no resuelva |
+| Búsqueda vectorial | pgvector, con índice HNSW | **Mantener pgvector**; pasar a una base gestionada solo si hace falta | Millones de chunks, o latencia de búsqueda que un índice no resuelva |
 | Base y despliegue | Supabase y Vercel | **Comprar**, como ya se hace. Considerar un servidor persistente para el backend | Las corridas largas chocan con el límite de tiempo de las funciones serverless |
 | Autenticación | Contraseña compartida | **Comprar:** el SSO corporativo | Es requisito de la fase 1 |
 | Spec, runtime, Builder, gate y catálogo | Propios | **Construir:** es el gobierno que Bia quiere, y lo que no se obtiene comprando una herramienta | — |

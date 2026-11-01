@@ -1,6 +1,7 @@
 import {
   AgentStatus,
   DocumentType,
+  EvalCaseOrigin,
   EvalVerdict,
   ModelSize,
   OrchestrationType,
@@ -15,6 +16,12 @@ export const AGENT_STATUS_LABEL: Record<AgentStatus, string> = {
   [AgentStatus.TESTING]: "En pruebas",
   [AgentStatus.PUBLISHED]: "Publicado",
   [AgentStatus.ARCHIVED]: "Archivado",
+};
+
+/** Who wrote each test case; consumed by the eval results. */
+export const EVAL_CASE_ORIGIN_LABEL: Record<EvalCaseOrigin, string> = {
+  [EvalCaseOrigin.GENERATED]: "Generado",
+  [EvalCaseOrigin.MANUAL]: "Área dueña",
 };
 
 /** The Spanish name of each run status; consumed by the trace views and the playground. */

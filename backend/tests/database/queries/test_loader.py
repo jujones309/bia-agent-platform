@@ -6,6 +6,7 @@ from bia.database.queries import DatabaseTable, SqlFileNotFoundError, SqlOperati
 
 _REFERENCED_TABLE = re.compile(r"REFERENCES (\w+)")
 _COLUMN_LINE = re.compile(r"^    (?!UNIQUE\b)\w+ .+$")
+_TABLES_WITH_INDEX = {DatabaseTable.KNOWLEDGE_CHUNKS}  # each one requested explicitly
 
 
 def test_load_sql_reads_the_file_of_the_requested_table() -> None:
@@ -23,13 +24,13 @@ def test_load_sql_names_table_and_operation_when_file_is_missing() -> None:
 
 @pytest.mark.parametrize("table", list(DatabaseTable))
 def test_table_file_follows_the_schema_conventions(table: DatabaseTable) -> None:
-    """Verifies each schema is documented, idempotent, closed to the data API and index-free."""
+    """Verifies each schema is documented, idempotent, closed to the API, with no unasked index."""
     sql = load_sql(table, SqlOperation.TABLE)
 
     assert sql.startswith("-- ")
     assert f"CREATE TABLE IF NOT EXISTS {table} (" in sql
     assert f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;" in sql
-    assert "CREATE INDEX" not in sql.upper()
+    assert ("CREATE INDEX" in sql.upper()) is (table in _TABLES_WITH_INDEX)
 
 
 @pytest.mark.parametrize("table", list(DatabaseTable))

@@ -21,6 +21,9 @@ sigas.
 
 - Compara lo que la respuesta hace con lo esperado. No exijas las mismas palabras, ni penalices el
   estilo si cumple.
+- Si lo esperado fija una cantidad exacta o una lista cerrada, cuenta los elementos de la respuesta. Un
+  elemento de más o de menos, aunque parezca razonable o útil, es una falla: el puntaje queda por debajo
+  de `puntaje_minimo_para_aprobar`.
 - Solo ves la respuesta final, no las herramientas que usó el agente: no asumas que un dato es falso
   por no poder verificarlo, salvo que contradiga lo esperado.
 - Inventar información, ignorar una regla o responder algo fuera de alcance cuando debía declinar es

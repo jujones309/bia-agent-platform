@@ -12,7 +12,7 @@ class EvalCaseOrigin(StrEnum):
     """
 
     GENERATED = "generated"
-    MANUAL = "manual"
+    MANUAL = "manual"  # written by a person of the owner area; the gate requires some
 
 
 class EvalVerdict(StrEnum):
@@ -145,6 +145,9 @@ class EvalReport(BaseModel):
     total_cases: int
     passed_cases: int
     pass_percent: float  # over every case, so a case without a result counts against the gate
+    minimum_owner_cases: int
+    owner_cases: int
+    passed_owner_cases: int
     passes_gate: bool
     outcomes: list[EvalCaseOutcome]
 

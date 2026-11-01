@@ -306,6 +306,9 @@ export interface EvalReport {
   total_cases: number;
   passed_cases: number;
   pass_percent: number;
+  minimum_owner_cases: number;
+  owner_cases: number;
+  passed_owner_cases: number;
   passes_gate: boolean;
   outcomes: EvalCaseOutcome[];
 }
