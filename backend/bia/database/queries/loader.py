@@ -55,6 +55,9 @@ class SqlOperation(StrEnum):
     SET_STATUS = "set_status"
     LIST_LATEST_BY_VERSION = "list_latest_by_version"
     LIST_SUCCEEDED_BY_ORIGIN = "list_succeeded_by_origin"
+    INVENTORY = "inventory"
+    COST_OF_CURRENT_MONTH = "cost_of_current_month"
+    DELETE_BY_ORCHESTRATION = "delete_by_orchestration"
 
 
 class SqlFileNotFoundError(FileNotFoundError):

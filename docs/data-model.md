@@ -209,7 +209,7 @@ versión.
 | `id` | `uuid` | Identificador del flujo. |
 | `name` | `text` | Nombre visible en el inventario. |
 | `description` | `text` | Qué logra el flujo. |
-| `orchestration_type` | `text` | Forma del flujo. Propuesto: `single_agent`, `sequential`. |
+| `orchestration_type` | `text` | Forma del flujo. Validado con enum en Python: `single_agent`, `sequential`. |
 | `created_at` | `timestamptz` | Cuándo se registró. |
 
 ### `orchestration_steps`
