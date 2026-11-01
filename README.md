@@ -30,10 +30,12 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | 0 | Setup y deploy temprano | Terminada |
 | 1 | Modelo de datos y base | Terminada |
 | 2 | Provider de modelos | Terminada |
-| 3-14 | Catálogos, trazas, runtime, Builder, frontend y entrega | Pendientes |
+| 3 | Catálogos (modelos y herramientas) | Terminada |
+| 4-14 | Trazas, runtime, Builder, frontend y entrega | Pendientes |
 
-Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos
-y el provider de modelos. El Builder y el runtime todavía no están construidos. El detalle está en
+Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
+el provider de modelos y los catálogos de modelos y herramientas. El Builder y el runtime todavía
+no están construidos. El detalle está en
 [docs/PLAN.md](docs/PLAN.md).
 
 ## Stack
@@ -266,3 +268,78 @@ guarda lo que recibió cada llamada.
    [factory.py](backend/bia/providers/factory.py).
 
 Las pruebas fallan si un miembro del enum no tiene constructor registrado.
+
+---
+
+## Guía: fase 3 — Catálogos
+
+### Requisito nuevo para arrancar la API
+
+Al arrancar, la API sincroniza las herramientas con la base. Por eso `DATABASE_URL` debe apuntar a
+una base ya migrada (`uv run python -m bia.database.migrate`). Si la sincronización falla, la API
+no arranca, y `/health` tampoco responde.
+
+### Consultar los catálogos
+
+Con la API corriendo, abre `/docs` o llama a los endpoints con la contraseña compartida:
+
+```bash
+curl -u demo:$API_ACCESS_PASSWORD localhost:8000/models
+curl -u demo:$API_ACCESS_PASSWORD "localhost:8000/models?only_active=true"
+curl -u demo:$API_ACCESS_PASSWORD localhost:8000/models/<id>
+curl -u demo:$API_ACCESS_PASSWORD localhost:8000/tools
+```
+
+| Endpoint | Qué devuelve |
+|---|---|
+| `GET /models` | Todos los modelos, ordenados por nombre. Con `only_active=true`, solo los activos. |
+| `GET /models/{id}` | Un modelo, activo o no. Responde 404 si no existe. |
+| `GET /tools` | Todas las herramientas. Con `only_active=true`, solo las activas. |
+
+### Agregar una herramienta
+
+1. Agrega el nombre al enum `ToolName` en
+   [artifacts.py](backend/bia/catalog/tools/artifacts.py).
+2. Crea la clase en `bia/catalog/tools/`, heredando de `Tool`
+   ([base.py](backend/bia/catalog/tools/base.py)). Toma de ejemplo
+   [consultar_factura.py](backend/bia/catalog/tools/consultar_factura.py).
+3. Registra su constructor en `_TOOL_BUILDERS`, en
+   [registry.py](backend/bia/catalog/tools/registry.py).
+4. Reinicia la API: la herramienta aparece en la tabla `tools`.
+
+`run(args)` recibe los argumentos ya validados. Esa validación contra el schema llega con el
+runtime (tarea 5.4); hasta entonces, un argumento faltante lanza `KeyError`. Los fallos esperados,
+como un cliente inexistente, se devuelven como `ToolResult(error=...)` para que el modelo pueda
+reaccionar.
+
+### Retirar una herramienta
+
+El código manda sobre la tabla: las herramientas del registry quedan activas y las demás, inactivas.
+Para retirar una, quítala del código y reinicia. Su fila se conserva porque los pasos de runs pasados
+la referencian. Cambiar `is_active` a mano en Supabase no dura: el siguiente arranque lo sobrescribe.
+
+En cambio, los modelos se administran en la base y en
+[models/seed.sql](backend/bia/database/queries/models/seed.sql), y la sincronización no los toca.
+
+### Probar `consultar_factura`
+
+Las facturas son datos falsos, en
+[facturas.json](backend/bia/catalog/tools/data/facturas.json): clientes `100001` a `100010`, con
+saldo en COP, período, consumo y fecha límite. El cliente `100006` tiene saldo a favor (negativo) y
+el `100003` tiene saldo 0.
+
+```python
+from bia.catalog.tools.registry import get_tool
+
+get_tool("consultar_factura").run({"numero_cliente": "100001"})
+```
+
+### Pruebas de esta fase
+
+Las consultas de modelos corren sobre SQLite en cada `uv run pytest`. Las de herramientas usan
+funciones de Postgres, así que solo corren con `INTEGRATION_DATABASE_URL`. Solo crean filas dentro
+de una transacción que se revierte al final, y no dejan nada en esa base:
+
+```bash
+INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/catalog/tools/test_repository.py
+```

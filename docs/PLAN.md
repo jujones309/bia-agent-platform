@@ -89,12 +89,12 @@ Objetivo: una sola puerta para hablar con LLMs, con uso y costo medidos.
 
 Objetivo: los inventarios de modelos y herramientas, curados y consultables.
 
-- [ ] **3.1 Repositorio de modelos** — Listar, obtener por id y filtrar activos (SQL en `models/`). Los artifacts definen `CatalogModel`.
-- [ ] **3.2 API de modelos** — `GET /models` y `GET /models/{id}`. *Listo cuando:* se ven en Swagger.
-- [ ] **3.3 Interfaz de herramienta** — Clase abstracta `Tool` (nombre, descripción, schema de parámetros, `run(args) -> ToolResult`) y un registry que mapea nombre a implementación.
-- [ ] **3.4 Tool `consultar_factura`** — Datos de facturas falsos (JSON en `bia/catalog/tools/data/`) de ~10 clientes: consulta por número de cliente y devuelve saldo, período, consumo y fecha límite.
-- [ ] **3.5 Sincronizar tools con la base** — Al arrancar, upsert de las tools del registry a la tabla `tools`. *Listo cuando:* la tabla refleja el código.
-- [ ] **3.6 API de tools** — `GET /tools`.
+- [x] **3.1 Repositorio de modelos** — Listar, obtener por id y filtrar activos (SQL en `models/`). Los artifacts definen `CatalogModel`.
+- [x] **3.2 API de modelos** — `GET /models` y `GET /models/{id}`. *Listo cuando:* se ven en Swagger.
+- [x] **3.3 Interfaz de herramienta** — Clase abstracta `Tool` (nombre, descripción, schema de parámetros, `run(args) -> ToolResult`) y un registry que mapea nombre a implementación.
+- [x] **3.4 Tool `consultar_factura`** — Datos de facturas falsos (JSON en `bia/catalog/tools/data/`) de ~10 clientes: consulta por número de cliente y devuelve saldo, período, consumo y fecha límite.
+- [x] **3.5 Sincronizar tools con la base** — Al arrancar, upsert de las tools del registry a la tabla `tools`. *Listo cuando:* la tabla refleja el código.
+- [x] **3.6 API de tools** — `GET /tools`.
 
 ## Fase 4 — Trazas
 
