@@ -282,6 +282,16 @@ Never use `print`. All output goes through the standard `logging` module.
   production.
 - `.env` is never committed; `backend/.env.example` lists every required variable.
 
+## README
+
+`README.md` (root, in Spanish) explains the project and how to do everything built so far.
+A plan phase in `docs/PLAN.md` is not finished until the README is updated in that phase:
+
+- Add a `## Guía: fase N — <tema>` section with the how-to of each thing the phase added
+  (commands to run, how to use or extend it, required variables, limitations).
+- Update the `## Estado` table and any earlier section the phase made outdated.
+- Only document what exists and was actually run; never describe planned behavior as working.
+
 ## Testing philosophy
 
 Tests verify the actual behavior and intent of the code, not just exercise it.

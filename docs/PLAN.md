@@ -3,6 +3,8 @@
 Plan de desarrollo desde cero, dividido en tareas de 10-15 minutos.
 Marca cada tarea con `[x]` al terminarla y haz un commit por tarea o grupo pequeño
 (Conventional Commits, ver `CLAUDE.md`).
+Al cerrar cada fase, agrega al `README.md` su guía de cómo hacer lo construido y actualiza la
+tabla de estado (ver `CLAUDE.md`).
 
 ## Decisiones tomadas
 
