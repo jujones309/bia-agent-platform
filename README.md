@@ -35,12 +35,14 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | 5 | Runtime de agentes | Terminada |
 | 6 | Registro de agentes | Terminada |
 | 7 | RAG | Terminada |
-| 8-14 | Builder, evals, frontend y entrega | Pendientes |
+| 8 | Agent Builder | Terminada |
+| 9-14 | Evals, caso real, frontend y entrega | Pendientes |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
 el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime,
-el registro de agentes y las bases de conocimiento con búsqueda citable. El Builder todavía no está construido, así que por ahora los agentes se crean
-enviando la spec completa a `POST /agents`. El detalle está en [docs/PLAN.md](docs/PLAN.md).
+el registro de agentes, las bases de conocimiento con búsqueda citable y el Agent Builder, que detecta
+duplicados y propone la spec. Todavía no hay evals ni forma de publicar un agente, y por eso el flujo
+llega hasta el paso 5 de la lista anterior. El detalle está en [docs/PLAN.md](docs/PLAN.md).
 
 ## Stack
 
@@ -279,7 +281,8 @@ Las pruebas fallan si un miembro del enum no tiene constructor registrado.
 
 ### Requisito nuevo para arrancar la API
 
-Al arrancar, la API sincroniza las herramientas con la base. Por eso `DATABASE_URL` debe apuntar a
+Al arrancar, la API sincroniza las herramientas con la base (y, desde la fase 8, los agentes de
+sistema). Por eso `DATABASE_URL` debe apuntar a
 una base ya migrada (`uv run python -m bia.database.migrate`). Si la sincronización falla, la API
 no arranca, y `/health` tampoco responde.
 
@@ -579,7 +582,8 @@ cuyo modelo fue retirado no acepta ediciones hasta que el mismo `PATCH` elija ot
 
 - **Ningún endpoint cambia el estado.** Todos los agentes quedan en `draft`; publicar llega en la fase 9.
 - **`PATCH` solo edita la spec.** El nombre, la descripción, el área y el creador no se pueden cambiar.
-- **`designer_justification` queda nulo** y `kind` siempre es `user`; el Builder los usará en la fase 8.
+- **`POST /agents` no guarda justificación** y crea siempre agentes `user`. El Builder sí guarda
+  `designer_justification` y registra agentes `system` (ver fase 8).
 - **Si falla la escritura de la traza** después de crear el agente, la respuesta es 500 pero el agente
   ya existe. Reintentar crearía otro.
 
@@ -697,4 +701,123 @@ La ingesta, la búsqueda y la ejecución con recuperación usan pgvector, así q
 
 ```bash
 INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/rag tests/runtime
+```
+
+---
+
+## Guía: fase 8 — Agent Builder
+
+No hay migración de tablas, pero **al arrancar, la API ahora registra el juez y el diseñador**, y para
+eso el catálogo necesita un modelo activo `small` y uno `large`, además del de embeddings. El seed los
+trae. Si falta uno, la API no arranca y el error dice cuál. Esto no hace llamadas a un LLM.
+
+### Paso 1: ¿ya existe el agente?
+
+```bash
+curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/builder/check \
+  -H 'Content-Type: application/json' \
+  -d '{"description": "Un bot que responda dudas de facturas"}'
+```
+
+Se buscan los 3 agentes publicados de empleados más parecidos a la descripción, y un LLM decide:
+
+| `verdict` | Significa | `candidate` |
+|---|---|---|
+| `exists` | Un agente ya resuelve la necesidad; la persona confirma si es el que buscaba. | El agente |
+| `similar` | Un agente cubre una parte; la persona decide si le sirve. | El agente |
+| `not_exists` | Ninguno la resuelve. Se puede pasar al paso 2. | `null` |
+
+Sin candidatos, la respuesta es `not_exists` y no se llama al juez; solo se paga el embedding. Si el
+juez elige un agente que no estaba entre los candidatos, o se contradice, la respuesta es 502: un
+fallo nunca se presenta como "no existe".
+
+### Paso 2: proponer el agente
+
+```bash
+curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/builder/propose \
+  -H 'Content-Type: application/json' -d '{
+    "description": "Un asistente que responda dudas de facturación: saldo, tarifas y reclamos",
+    "owner_area": "Servicio al cliente",
+    "creator": "Ana"
+  }'
+```
+
+Crea el agente en `draft` y responde 201 con la spec (`agent.active_version.spec`) y una justificación
+por decisión (`justification`: `model`, `tools`, `knowledge_base` y `guardrails`). La misma justificación
+queda como texto en `designer_justification`, con una línea por decisión. El nombre lo propone el
+diseñador, y la descripción es la que escribió la persona, porque es lo que compara la búsqueda de
+duplicados.
+
+- **Solo elige de lo que existe.** Recibe los modelos activos que no son de embeddings, las herramientas
+  activas y las bases de conocimiento, así que **crea la base antes de proponer** si el agente la
+  necesita. Si no hay una sobre el tema, propone el agente sin ella y lo dice en la justificación.
+- **Un reintento.** La propuesta pasa por las mismas reglas que `POST /agents`. Si es inválida, el
+  diseñador recibe los problemas y vuelve a intentar una vez; si falla otra vez, la respuesta es 502 y
+  no se crea nada.
+
+Para ajustar la propuesta, usa `PATCH /agents/{id}` (ver fase 6). Las versiones editadas tienen
+`designer_justification` nulo, porque ya no son del diseñador.
+
+| Endpoint | Respuestas de error |
+|---|---|
+| `POST /builder/check` | 422: cuerpo inválido. 502: falló un modelo o la respuesta del juez no sirve. 503: el juez no puede ejecutarse o no hay modelo de embeddings activo. |
+| `POST /builder/propose` | 422: cuerpo inválido. 502: falló un modelo o no se obtuvo una spec válida. 503: el diseñador no puede ejecutarse o no hay modelo de embeddings activo. |
+
+### El Builder aparece en sus propios inventarios
+
+El juez y el diseñador son agentes `system`, publicados, con identificador fijo y visibles en
+`GET /agents`. Sus llamadas quedan como runs de origen `builder`:
+
+```bash
+# Juez de duplicados
+curl -u demo:$API_ACCESS_PASSWORD "localhost:8000/runs?agent_id=5d0c6f2e-8a51-4f0b-9f1e-2f6a7b3c1d01"
+# Diseñador
+curl -u demo:$API_ACCESS_PASSWORD "localhost:8000/runs?agent_id=5d0c6f2e-8a51-4f0b-9f1e-2f6a7b3c1d02"
+```
+
+Un chequeo tiene un paso por el embedding y otro por el juez; una propuesta, uno por cada intento. Un
+fallo deja el paso con `error` y el run en `failed`. El embedding de la descripción del agente nuevo
+queda en un run del propio agente, como en cualquier creación.
+
+En una prueba real con la API de OpenAI, un chequeo costó unos USD 0,0001 y tardó unos 2 s, y una
+propuesta unos USD 0,01 y 12 s.
+
+### Cambiar un prompt o el modelo del Builder
+
+- **Prompt:** edita [judge.md](backend/bia/builder/duplicates/prompts/judge.md) o
+  [designer.md](backend/bia/builder/designer/prompts/designer.md) y reinicia. Al arrancar se crea una
+  versión nueva de la spec si el texto cambió. El archivo manda: cambiar el `system_prompt` con `PATCH`
+  no dura más allá del siguiente arranque.
+- **Modelo:** usa `PATCH /agents/{id}` con otro `model_id`. El arranque lo respeta. El modelo inicial solo
+  se elige al registrar el agente: uno `small` para el juez y uno `large` para el diseñador.
+
+### Agregar un prompt de plataforma
+
+1. Crea `bia/<vertical>/prompts/<nombre>.md`. Debe abrir con un comentario `<!-- ... -->` que explique por
+   qué existe y quién lo usa; ese comentario no se envía al modelo.
+2. Agrega los miembros a `PromptVertical` y `PromptName` en
+   [loader.py](backend/bia/prompts/loader.py).
+3. Léelo con `load_prompt(vertical, name)`. Un archivo sin comentario o sin texto lanza un error.
+
+### Limitaciones actuales
+
+- **Todavía no se puede publicar.** Como la búsqueda solo considera agentes `published` y publicar llega
+  en la fase 9, por ahora `check` siempre responde `not_exists`. Para probar otro veredicto en una base
+  desechable, cambia a mano `agents.status` a `published`.
+- **`propose` no vuelve a chequear duplicados.** Quien llama debe haber pasado antes por `check`.
+- **Una base sin documentos también se ofrece.** El diseñador solo ve su nombre y su descripción.
+- **Si falla la creación después de diseñar** (por ejemplo, el embedding), la respuesta es 502 o 503 y no
+  se crea nada, pero el run del diseñador ya quedó `succeeded`, con su propuesta y su costo.
+- **Los agentes de sistema se pueden ejecutar con `POST /agents/{id}/run`**, pero ahí responden como
+  cualquier agente de chat, sin la salida estructurada que usa el Builder.
+
+### Pruebas de esta fase
+
+El loader, los contratos, el juez, el diseñador, las trazas y los routers corren en cada `uv run pytest`,
+también en CI, con `FakeModelProvider` y `FakeRunRecorder`. La búsqueda, el registro de los agentes de
+sistema y el flujo completo usan pgvector, así que requieren `INTEGRATION_DATABASE_URL` (ver la base
+desechable en la fase 4):
+
+```bash
+INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/builder
 ```

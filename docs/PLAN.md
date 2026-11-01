@@ -146,16 +146,16 @@ Objetivo: conocimiento de Bia recuperable con citas.
 
 Objetivo: de una descripción en lenguaje natural a un agente propuesto, reutilizando antes de crear.
 
-- [ ] **8.1 Loader de prompts** — `load_prompt(vertical, name)` que lee los `.md` de `bia/<vertical>/prompts/`.
-- [ ] **8.2 Artifacts del builder** — `AgentRequest`, `DuplicateVerdict` (enum), `DuplicateCheckResult` (veredicto, agente candidato, razón) y `AgentProposal` (spec + justificación).
-- [ ] **8.3 Búsqueda de candidatos** — Embedding de la descripción y top-3 de agentes publicados por similitud.
-- [ ] **8.4 Prompt del juez** — `builder/duplicates/prompts/judge.md`: recibe la necesidad y los candidatos, y devuelve el veredicto estructurado.
-- [ ] **8.5 Juez** — Combina búsqueda y juez. Si no hay candidatos, devuelve `not_exists` sin llamar al LLM. Con tests usando el provider falso.
-- [ ] **8.6 Prompt del diseñador** — `builder/designer/prompts/designer.md`: recibe la necesidad, el catálogo de modelos (con costos y uso recomendado) y el catálogo de tools, y devuelve la spec y la justificación de cada decisión.
-- [ ] **8.7 Diseñador** — Genera la propuesta, la valida contra el catálogo (6.4) y reintenta una vez si es inválida.
-- [ ] **8.8 Endpoint de chequeo** — `POST /builder/check`, que devuelve el veredicto y el candidato.
-- [ ] **8.9 Endpoint de propuesta** — `POST /builder/propose`, que crea el agente en `draft` con la spec propuesta. El usuario ajusta luego con `PATCH /agents/{id}`.
-- [ ] **8.10 Builder como agentes de sistema** — Registrar el juez y el diseñador como agentes `system` y trazar sus llamadas como runs. Así el Builder aparece en sus propios inventarios.
+- [x] **8.1 Loader de prompts** — `load_prompt(vertical, name)` que lee los `.md` de `bia/<vertical>/prompts/`.
+- [x] **8.2 Artifacts del builder** — `AgentRequest`, `DuplicateVerdict` (enum), `DuplicateCheckResult` (veredicto, agente candidato, razón) y `AgentProposal` (spec + justificación).
+- [x] **8.3 Búsqueda de candidatos** — Embedding de la descripción y top-3 de agentes publicados por similitud.
+- [x] **8.4 Prompt del juez** — `builder/duplicates/prompts/judge.md`: recibe la necesidad y los candidatos, y devuelve el veredicto estructurado.
+- [x] **8.5 Juez** — Combina búsqueda y juez. Si no hay candidatos, devuelve `not_exists` sin llamar al LLM. Con tests usando el provider falso.
+- [x] **8.6 Prompt del diseñador** — `builder/designer/prompts/designer.md`: recibe la necesidad, el catálogo de modelos (con costos y uso recomendado), el catálogo de tools y las bases de conocimiento, y devuelve la spec y la justificación de cada decisión.
+- [x] **8.7 Diseñador** — Genera la propuesta, la valida contra el catálogo (6.4) y reintenta una vez si es inválida.
+- [x] **8.8 Endpoint de chequeo** — `POST /builder/check`, que devuelve el veredicto y el candidato.
+- [x] **8.9 Endpoint de propuesta** — `POST /builder/propose`, que crea el agente en `draft` con la spec propuesta. El usuario ajusta luego con `PATCH /agents/{id}`.
+- [x] **8.10 Builder como agentes de sistema** — Registrar el juez y el diseñador como agentes `system` y trazar sus llamadas como runs. Así el Builder aparece en sus propios inventarios.
 
 ## Fase 9 — Evals y publicación
 
