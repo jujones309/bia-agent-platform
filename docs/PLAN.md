@@ -59,17 +59,17 @@ Objetivo: repo listo, `/health` respondiendo en Railway desde el día uno.
 
 Objetivo: el esquema completo documentado y aplicado en Supabase.
 
-- [ ] **1.1 Documento del modelo de datos** — `docs/data-model.md` con cada tabla y cada columna (tipo y significado de negocio). Es la fuente de verdad para los `table.sql`. *Listo cuando:* están las 12 tablas de esta fase.
-- [ ] **1.2 Conexión** — `bia/database/` con engine y sesión de SQLAlchemy (modo core, sin ORM pesado) y un context manager de sesión. *Listo cuando:* un test de integración hace `SELECT 1`.
-- [ ] **1.3 Loader de SQL** — `bia/database/queries/load_sql(table, operation)` con test: lee el archivo correcto y falla claro si no existe. *Listo cuando:* el test pasa.
-- [ ] **1.4 Tablas de catálogo** — `models/table.sql` (nombre, proveedor, id del proveedor, tamaño, costo de entrada/salida por 1M de tokens, ventana de contexto, uso recomendado, activo) y `tools/table.sql` (nombre, descripción, JSON schema de parámetros, nivel de riesgo, activo).
-- [ ] **1.5 Tablas de agentes** — `agents/table.sql` (nombre, descripción, área dueña, creador, estado, tipo `user`/`system`, embedding de la descripción, versión activa) y `agent_versions/table.sql` (agente, número de versión, spec JSON, justificación del diseñador, fecha).
-- [ ] **1.6 Tablas de conocimiento** — `knowledge_bases`, `knowledge_documents` (base, título, tipo de documento, vigencia) y `knowledge_chunks` (documento, contenido, metadata, embedding `vector(1536)`).
-- [ ] **1.7 Tablas de trazas** — `runs` (agente, versión, origen, input, output, estado, tokens totales, costo, latencia) y `run_steps` (run, orden, tipo de paso, modelo, tool, input, output, tokens, costo, latencia, error).
-- [ ] **1.8 Tablas de evals** — `eval_cases` (agente, input, comportamiento esperado, origen: generado o manual) y `eval_results` (caso, versión, output, veredicto, puntaje, razón del juez).
-- [ ] **1.9 Tablas de orquestación** — `orchestrations` (nombre, descripción, tipo) y `orchestration_steps` (orquestación, orden, agente, qué contexto recibe y qué entrega). *Listo cuando:* las 13 tablas tienen su `table.sql` documentado.
-- [ ] **1.10 Script de migración** — `bia/database/migrate.py`, que aplica todos los `table.sql` en orden de dependencias de forma idempotente (`IF NOT EXISTS`). *Listo cuando:* lo corres dos veces contra Supabase sin errores.
-- [ ] **1.11 Seed del catálogo** — `seed.sql` por tabla con 2-3 modelos de OpenAI (uno grande, uno pequeño, uno de embeddings) y costos reales. *Listo cuando:* los registros se ven en Supabase.
+- [x] **1.1 Documento del modelo de datos** — `docs/data-model.md` con cada tabla y cada columna (tipo y significado de negocio). Es la fuente de verdad para los `table.sql`. *Listo cuando:* están las 13 tablas de esta fase.
+- [x] **1.2 Conexión** — `bia/database/` con engine y sesión de SQLAlchemy (modo core, sin ORM pesado) y un context manager de sesión. *Listo cuando:* un test de integración hace `SELECT 1`.
+- [x] **1.3 Loader de SQL** — `bia/database/queries/load_sql(table, operation)` con test: lee el archivo correcto y falla claro si no existe. *Listo cuando:* el test pasa.
+- [x] **1.4 Tablas de catálogo** — `models/table.sql` (nombre, proveedor, id del proveedor, tamaño, costo de entrada/salida por 1M de tokens, ventana de contexto, uso recomendado, activo) y `tools/table.sql` (nombre, descripción, JSON schema de parámetros, nivel de riesgo, activo).
+- [x] **1.5 Tablas de agentes** — `agents/table.sql` (nombre, descripción, área dueña, creador, estado, tipo `user`/`system`, embedding de la descripción, versión activa) y `agent_versions/table.sql` (agente, número de versión, spec JSON, justificación del diseñador, fecha).
+- [x] **1.6 Tablas de conocimiento** — `knowledge_bases`, `knowledge_documents` (base, título, tipo de documento, vigencia) y `knowledge_chunks` (documento, contenido, metadata, embedding `vector(1536)`).
+- [x] **1.7 Tablas de trazas** — `runs` (agente, versión, origen, input, output, estado, tokens totales, costo, latencia) y `run_steps` (run, orden, tipo de paso, modelo, tool, input, output, tokens, costo, latencia, error).
+- [x] **1.8 Tablas de evals** — `eval_cases` (agente, input, comportamiento esperado, origen: generado o manual) y `eval_results` (caso, versión, output, veredicto, puntaje, razón del juez).
+- [x] **1.9 Tablas de orquestación** — `orchestrations` (nombre, descripción, tipo) y `orchestration_steps` (orquestación, orden, agente, qué contexto recibe y qué entrega). *Listo cuando:* las 13 tablas tienen su `table.sql` documentado.
+- [x] **1.10 Script de migración** — `bia/database/migrate.py`, que aplica todos los `table.sql` en orden de dependencias de forma idempotente (`IF NOT EXISTS`). *Listo cuando:* lo corres dos veces contra Supabase sin errores.
+- [x] **1.11 Seed del catálogo** — `seed.sql` por tabla con 2-3 modelos de OpenAI (uno grande, uno pequeño, uno de embeddings) y costos reales. *Listo cuando:* los registros se ven en Supabase.
 
 ## Fase 2 — Provider de modelos
 
