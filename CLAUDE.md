@@ -66,6 +66,7 @@ Verticals:
 | `bia/rag/` | Document ingestion, chunking, embeddings, retrieval |
 | `bia/evals/` | Test cases, eval runs, LLM-as-judge, publish gate |
 | `bia/providers/` | `ModelProvider` contract; `providers/openai/` implementation |
+| `bia/prompts/` | Shared loader of the `.md` prompts that live under `bia/<vertical>/prompts/` |
 | `bia/database/` | Connection/session handling; `database/queries/` holds all SQL |
 | `bia/api/` | FastAPI routers (thin layer, see below) |
 | `bia/settings/` | Environment-driven settings (`pydantic-settings`) |
