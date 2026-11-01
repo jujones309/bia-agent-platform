@@ -133,14 +133,14 @@ Objetivo: inventario de agentes versionado.
 
 Objetivo: conocimiento de Bia recuperable con citas.
 
-- [ ] **7.1 Documentos de Bia** — Escribir en `data/knowledge/` 3 documentos markdown ficticios pero realistas: tarifas, procedimientos de facturación y FAQ.
-- [ ] **7.2 Enum de tipo de documento** — `DocumentType` (`tariff`, `procedure`, `faq`), que define la estrategia de chunking.
-- [ ] **7.3 Chunking** — Por encabezados para procedimientos y tarifas, y por par pregunta-respuesta para la FAQ. Guarda en la metadata la sección y el documento. Con tests.
-- [ ] **7.4 Ingesta** — Lee, divide, genera embeddings en lote e inserta. Es idempotente por documento.
-- [ ] **7.5 Búsqueda** — `search_by_embedding.sql` por distancia coseno, filtrada por base de conocimiento, con top-k.
-- [ ] **7.6 Tool `buscar_conocimiento`** — Devuelve los chunks con su fuente para que el agente cite.
-- [ ] **7.7 Traza de retrieval** — La búsqueda queda como paso `retrieval` con los chunks devueltos.
-- [ ] **7.8 API de conocimiento** — `POST /knowledge-bases`, `POST /knowledge-bases/{id}/ingest` y `GET /knowledge-bases/{id}/search?q=`.
+- [x] **7.1 Documentos de Bia** — Escribir en `data/knowledge/` 3 documentos markdown ficticios pero realistas: tarifas, procedimientos de facturación y FAQ.
+- [x] **7.2 Enum de tipo de documento** — `DocumentType` (`tariff`, `procedure`, `faq`), que define la estrategia de chunking.
+- [x] **7.3 Chunking** — Por encabezados para procedimientos y tarifas, y por par pregunta-respuesta para la FAQ. Guarda en la metadata la sección y el documento. Con tests.
+- [x] **7.4 Ingesta** — Lee, divide, genera embeddings en lote e inserta. Es idempotente por documento.
+- [x] **7.5 Búsqueda** — `search_by_embedding.sql` por distancia coseno, filtrada por base de conocimiento, con top-k.
+- [x] **7.6 Tool `buscar_conocimiento`** — Devuelve los chunks con su fuente para que el agente cite.
+- [x] **7.7 Traza de retrieval** — La búsqueda queda como paso `retrieval` con los chunks devueltos.
+- [x] **7.8 API de conocimiento** — `POST /knowledge-bases`, `POST /knowledge-bases/{id}/ingest` y `GET /knowledge-bases/{id}/search?q=`.
 
 ## Fase 8 — Agent Builder
 

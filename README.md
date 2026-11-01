@@ -34,11 +34,12 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | 4 | Trazas | Terminada |
 | 5 | Runtime de agentes | Terminada |
 | 6 | Registro de agentes | Terminada |
-| 7-14 | RAG, Builder, frontend y entrega | Pendientes |
+| 7 | RAG | Terminada |
+| 8-14 | Builder, evals, frontend y entrega | Pendientes |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
-el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime y
-el registro de agentes. El Builder todavía no está construido, así que por ahora los agentes se crean
+el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime,
+el registro de agentes y las bases de conocimiento con búsqueda citable. El Builder todavía no está construido, así que por ahora los agentes se crean
 enviando la spec completa a `POST /agents`. El detalle está en [docs/PLAN.md](docs/PLAN.md).
 
 ## Stack
@@ -310,10 +311,11 @@ curl -u demo:$API_ACCESS_PASSWORD localhost:8000/tools
    [registry.py](backend/bia/catalog/tools/registry.py).
 4. Reinicia la API: la herramienta aparece en la tabla `tools`.
 
-`run(args)` recibe los argumentos ya validados. Esa validación contra el schema llega con el
-runtime (tarea 5.4); hasta entonces, un argumento faltante lanza `KeyError`. Los fallos esperados,
+`run(args, context)` recibe los argumentos ya validados por el runtime y un `ToolContext` con lo que
+decide la ejecución y no el modelo, como la base de conocimiento de la spec. Los fallos esperados,
 como un cliente inexistente, se devuelven como `ToolResult(error=...)` para que el modelo pueda
-reaccionar.
+reaccionar. Si la herramienta llama a un modelo, debe reportar `model_id`, tokens y costo en su
+`ToolResult`, y puede cambiar `step_type`, para que la traza los registre.
 
 ### Retirar una herramienta
 
@@ -332,9 +334,12 @@ saldo en COP, período, consumo y fecha límite. El cliente `100006` tiene saldo
 el `100003` tiene saldo 0.
 
 ```python
+from bia.catalog.tools.base import ToolContext
 from bia.catalog.tools.registry import get_tool
+from bia.database.connection import get_engine
 
-get_tool("consultar_factura").run({"numero_cliente": "100001"})
+context = ToolContext(bind=get_engine(), knowledge_base_id=None)
+get_tool("consultar_factura").run({"numero_cliente": "100001"}, context)
 ```
 
 ### Pruebas de esta fase
@@ -481,7 +486,7 @@ Para crear un agente que ejecutar, ver la guía de la fase 6. La spec es un JSON
 - `max_iterations` va de 1 a 20. Cada iteración es una llamada al modelo.
 - Un campo desconocido invalida la spec. No hay `temperature`, porque los modelos sembrados no la
   aceptan.
-- `knowledge_base_id` se acepta, pero el runtime todavía no lo usa: el RAG llega en la fase 7.
+- `knowledge_base_id` es la única base que puede leer `buscar_conocimiento` (ver fase 7).
 
 ### Cómo se comporta el loop
 
@@ -565,6 +570,7 @@ curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/<id>/versions/1/
 | Modelo retirado | Rechazado | Permitido: el runtime lo sigue ejecutando |
 | Modelo de embeddings | Rechazado | Permitido, y el run queda `failed` |
 | Herramienta inexistente o retirada | Rechazada | Rechazada: el runtime no la ejecutaría |
+| Base de conocimiento inexistente, o sin su herramienta (ver fase 7) | Rechazada | Permitida |
 
 El error enumera todos los problemas de una vez. Como cada `PATCH` valida la spec completa, un agente
 cuyo modelo fue retirado no acepta ediciones hasta que el mismo `PATCH` elija otro modelo.
@@ -573,7 +579,6 @@ cuyo modelo fue retirado no acepta ediciones hasta que el mismo `PATCH` elija ot
 
 - **Ningún endpoint cambia el estado.** Todos los agentes quedan en `draft`; publicar llega en la fase 9.
 - **`PATCH` solo edita la spec.** El nombre, la descripción, el área y el creador no se pueden cambiar.
-- **`knowledge_base_id` no se valida** contra una base existente; las bases llegan en la fase 7.
 - **`designer_justification` queda nulo** y `kind` siempre es `user`; el Builder los usará en la fase 8.
 - **Si falla la escritura de la traza** después de crear el agente, la respuesta es 500 pero el agente
   ya existe. Reintentar crearía otro.
@@ -585,4 +590,111 @@ Postgres, así que requieren `INTEGRATION_DATABASE_URL` (ver la base desechable 
 
 ```bash
 INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/agents
+```
+
+---
+
+## Guía: fase 7 — RAG
+
+No hay migración nueva: esta fase usa las tablas `knowledge_*` que ya existían. Al arrancar, la API
+registra sola la herramienta `buscar_conocimiento`. La base necesita un modelo de embeddings activo.
+
+### Cargar conocimiento
+
+Los documentos de la demo, ficticios, están en [data/knowledge/](data/knowledge/). La API recibe el
+texto en el cuerpo porque el backend desplegado no tiene acceso a los archivos del repo. Desde la
+raíz del repo, con la API corriendo:
+
+```bash
+BASE=$(curl -s -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/knowledge-bases \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "Facturación", "description": "Tarifas, procedimientos y FAQ"}' | jq -r .id)
+
+jq -n --rawfile content data/knowledge/tarifas.md \
+  '{title: "Tarifas de energía 2026", document_type: "tariff", content: $content}' \
+  | curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/knowledge-bases/$BASE/ingest \
+    -H 'Content-Type: application/json' -d @-
+```
+
+Repite el segundo comando con `procedimientos-facturacion.md` (`procedure`) y
+`preguntas-frecuentes.md` (`faq`). También se aceptan `valid_from` y `valid_until` (`YYYY-MM-DD`).
+
+- **Reingerir es seguro:** el documento se identifica por su título dentro de la base, y sus chunks se
+  reemplazan completos. Si falla el embedding, la versión anterior queda intacta.
+- **Cambiar el título crea otro documento.** Todavía no hay forma de borrar uno por la API.
+
+### Cómo se divide cada tipo de documento
+
+| Tipo | Un chunk por | Sección que se cita |
+|---|---|---|
+| `tariff`, `procedure` | Cada encabezado con texto; las tablas y los pasos no se parten | La ruta de encabezados: `Tarifas > Tarifa residencial` |
+| `faq` | Cada encabezado terminado en `?`, con su respuesta | La pregunta |
+
+En una FAQ, los demás encabezados solo agrupan: texto debajo de ellos o una pregunta sin respuesta
+rechazan el documento, para no perder contenido en silencio. Tampoco se acepta una sección de más de
+8.000 caracteres ni un documento de más de 200.000: divídelos. El divisor no reconoce bloques de código,
+así que una línea que empiece con `#` dentro de uno cuenta como encabezado.
+
+### Buscar
+
+```bash
+curl -u demo:$API_ACCESS_PASSWORD -G localhost:8000/knowledge-bases/$BASE/search \
+  --data-urlencode 'q=¿Cuánto cuesta el kWh en estrato 2?' --data top_k=3
+```
+
+Devuelve los chunks más cercanos primero, con `document`, `section`, `content` y `similarity`.
+`top_k` va de 1 a 20 (5 por defecto). Solo cuentan los documentos vigentes hoy, con ambas fechas
+inclusive y según la fecha de la base de datos.
+
+| Endpoint | Respuestas de error |
+|---|---|
+| `POST /knowledge-bases` | 422: cuerpo inválido. |
+| `POST /knowledge-bases/{id}/ingest` | 404: la base no existe. 422: documento inválido. 502: falló el embedding. 503: no hay modelo de embeddings activo. |
+| `GET /knowledge-bases/{id}/search` | 404: la base no existe. 422: parámetros inválidos. 502: falló el embedding. 503: no hay modelo de embeddings activo. |
+
+### Darle conocimiento a un agente
+
+La spec necesita las dos cosas juntas; si falta una, o la base no existe, se rechaza con 422:
+
+```json
+{
+  "tool_names": ["buscar_conocimiento"],
+  "knowledge_base_id": "<id de la base>"
+}
+```
+
+El modelo solo envía la pregunta. La base sale de la spec, así que un agente no puede leer otra. Un
+agente que ya tenía `knowledge_base_id` sin la herramienta no acepta ediciones hasta que el `PATCH`
+agregue la herramienta o quite la base.
+
+Indica en el system prompt que responda solo con lo recuperado y que cite documento y sección. La
+búsqueda no tiene umbral de similitud: una pregunta fuera de tema igual devuelve fragmentos, con una
+similitud baja (0,1 en la prueba con "la capital de Francia", contra 0,65-0,85 en preguntas de
+facturación), y es el modelo el que debe descartarlos.
+
+### Qué queda en la traza
+
+Cada búsqueda de un agente es un único paso `retrieval` en `GET /runs`: con `tool_id`, el `model_id` de
+embeddings, sus tokens y su costo, y los chunks devueltos en `output`. Ese costo se suma al del run. Si
+la búsqueda falla, el modelo recibe un mensaje genérico, el paso queda con `error` y el run sigue. El
+detalle queda en los logs.
+
+### Limitaciones actuales
+
+- **La ingesta y la búsqueda directa no quedan en `runs`**, porque un run exige un agente. Su modelo,
+  tokens, costo y latencia vuelven en la respuesta, y la ingesta también los escribe en los logs. Por eso
+  no aparecen en las métricas ni en los inventarios.
+- **Reingerir siempre genera los embeddings de nuevo**, aunque el texto no haya cambiado.
+- **`POST /knowledge-bases` no evita nombres repetidos**, y no hay endpoints para listar bases.
+- **La búsqueda recorre todos los chunks de la base**, porque no hay índice vectorial. Basta para unos
+  pocos documentos; una base grande necesitará uno.
+
+### Pruebas de esta fase
+
+La división, los contratos, la herramienta y los routers corren en cada `uv run pytest`, también en CI.
+La ingesta, la búsqueda y la ejecución con recuperación usan pgvector, así que requieren
+`INTEGRATION_DATABASE_URL` (ver la base desechable en la fase 4):
+
+```bash
+INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/rag tests/runtime
 ```
