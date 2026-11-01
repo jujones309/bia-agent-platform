@@ -10,6 +10,7 @@ from bia.agents.validation import (
     find_model_problems,
     find_tool_problems,
     merge_spec_patch,
+    parse_spec,
 )
 from bia.catalog.models.artifacts import CatalogModel, ModelSize
 from bia.catalog.tools.artifacts import CatalogTool, RiskLevel, ToolName
@@ -197,3 +198,19 @@ def test_a_base_that_does_not_exist_is_named_together_with_other_problems() -> N
 
     assert str(base_id) in problems[0]
     assert "needs the tool" in problems[1]
+
+
+def test_parse_spec_reports_every_invalid_field_as_a_spec_problem() -> None:
+    """Verifies loose values fail with the error the designer retries on, naming the fields."""
+    values = {
+        "purpose": "",
+        "system_prompt": "Eres útil",
+        "model_id": str(uuid4()),
+        "max_iterations": 99,
+    }
+
+    with pytest.raises(InvalidAgentSpecError) as error:
+        parse_spec(values)
+
+    assert "purpose" in str(error.value)
+    assert "max_iterations" in str(error.value)

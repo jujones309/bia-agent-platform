@@ -22,10 +22,11 @@ logger = logging.getLogger(__name__)
 _MILLISECONDS_PER_SECOND = 1000
 
 
-def _elapsed_ms(started_at: float) -> int:
+def elapsed_ms(started_at: float) -> int:
     """Measures the milliseconds since a `time.perf_counter` reading.
 
-    Exists so model failures and tool calls, which report no latency, are measured alike.
+    Exists so model failures and tool calls, which report no latency, are measured alike; used
+    by the runner and by the system agents of the builder.
 
     Args:
         started_at: The earlier reading.
@@ -175,7 +176,7 @@ class AgentRunner:
                 RunStepDraft(
                     step_type=StepType.LLM_CALL,
                     error=str(error),
-                    latency_ms=_elapsed_ms(started_at),
+                    latency_ms=elapsed_ms(started_at),
                     **step,
                 ),
             )
@@ -221,7 +222,7 @@ class AgentRunner:
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
                 cost=result.cost,
-                latency_ms=_elapsed_ms(started_at),
+                latency_ms=elapsed_ms(started_at),
             ),
         )
         return to_tool_message(tool_call, result)

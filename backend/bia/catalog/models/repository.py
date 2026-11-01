@@ -23,6 +23,14 @@ class EmbeddingModelUnavailableError(LookupError):
     """
 
 
+class ModelSizeUnavailableError(LookupError):
+    """Signals that the model catalog has no active model of the size a system agent needs.
+
+    Exists so an unseeded catalog stops the startup with a clear reason. Raised by
+    `find_model_by_size`.
+    """
+
+
 def list_catalog_models(session: Session, only_active: bool) -> list[CatalogModel]:
     """Lists the entries of the model catalog, ordered by name.
 
@@ -62,6 +70,28 @@ def get_catalog_model(session: Session, model_id: UUID) -> CatalogModel:
     if row is None:
         raise CatalogModelNotFoundError(f"The model catalog has no entry with id {model_id}")
     return CatalogModel.model_validate(dict(row))
+
+
+def find_model_by_size(session: Session, size: ModelSize) -> CatalogModel:
+    """Chooses an active catalog model of the given size.
+
+    Exists because model identifiers always come from the catalog; used to assign a model to the
+    system agents when they are first registered.
+
+    Args:
+        session: The open session to read the catalog through.
+        size: The size the caller needs.
+
+    Returns:
+        CatalogModel: the first active model of that size, by name.
+
+    Raises:
+        ModelSizeUnavailableError: If the catalog has none.
+    """
+    for model in list_catalog_models(session, only_active=True):
+        if model.size is size:
+            return model
+    raise ModelSizeUnavailableError(f"The model catalog has no active '{size}' model")
 
 
 def find_embedding_model(session: Session) -> CatalogModel:

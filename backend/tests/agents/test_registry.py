@@ -422,3 +422,17 @@ def _parse_vector(stored: str) -> list[float]:
         list[float]: the components.
     """
     return [float(value) for value in stored.strip("[]").split(",")]
+
+
+def test_create_agent_stores_the_justification_of_the_designer(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies the reasons stay with the version they explain, and later edits have none."""
+    created = create_agent(connection, _draft(insert_model(connection)), "model: es barato")
+    agent_id = created.agent.id
+
+    with database_session(connection) as session:
+        add_version(session, agent_id, AgentSpecPatch(purpose="Otro"))
+        justifications = [v.designer_justification for v in list_versions(session, agent_id)]
+
+    assert justifications == ["model: es barato", None]

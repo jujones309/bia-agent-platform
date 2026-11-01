@@ -69,16 +69,19 @@ def _trace_embedding(
     recorder.finish_run(run.id, f"Embedding of {dimensions} dimensions")
 
 
-def create_agent(bind: Engine | Connection, draft: AgentDraft) -> AgentDetail:
+def create_agent(
+    bind: Engine | Connection, draft: AgentDraft, designer_justification: str | None = None
+) -> AgentDetail:
     """Creates an agent in draft with its first version and its description embedding.
 
-    Exists as the single way to register an agent; used by the agents API. The embedding happens
-    between two short transactions, so no connection stays open during the LLM call, and a
-    failure leaves nothing half-created.
+    Exists as the single way to register an agent; used by the agents API and the designer. The
+    embedding happens between two short transactions, so no connection stays open during the LLM
+    call, and a failure leaves nothing half-created.
 
     Args:
         bind: The database handle to read, write and trace through.
         draft: The identity of the agent and the spec of its first version.
+        designer_justification: Why the designer proposed the spec; None if it was manual.
 
     Returns:
         AgentDetail: the new agent with its version 1.
@@ -95,7 +98,7 @@ def create_agent(bind: Engine | Connection, draft: AgentDraft) -> AgentDetail:
     result = get_provider(model.provider).embed([draft.description], model.provider_model_id)
     with database_session(bind) as session:
         agent = insert_agent(session, draft, result.embeddings[0])
-        version = insert_version(session, agent.id, draft.spec)
+        version = insert_version(session, agent.id, draft.spec, designer_justification)
     _trace_embedding(bind, version, draft.description, model, result)
     logger.info("Agent %s created in %s at version 1", agent.id, agent.status.value)
     return AgentDetail(agent=agent, active_version=version)

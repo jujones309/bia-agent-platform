@@ -13,9 +13,7 @@ def test_sync_writes_every_tool_and_retires_only_the_rest(
     """Verifies the sync's decisions; the SQL itself is covered by test_repository.py."""
     upserted: list[object] = []
     kept_active: list[list[str]] = []
-    monkeypatch.setattr(
-        sync, "upsert_catalog_tool", lambda _session, tool: upserted.append(tool)
-    )
+    monkeypatch.setattr(sync, "upsert_catalog_tool", lambda _session, tool: upserted.append(tool))
     monkeypatch.setattr(
         sync, "deactivate_catalog_tools_except", lambda _session, names: kept_active.append(names)
     )

@@ -16,7 +16,7 @@ class InvalidAgentSpecError(ValueError):
 
     Exists so bad content is told apart from infrastructure failures, with a message that says
     what to fix. Raised by this module and translated to a 422 by `bia/api/agents.py`; the
-    designer will rely on it to retry an invalid proposal.
+    designer relies on it to retry an invalid proposal.
     """
 
 
@@ -159,6 +159,27 @@ def validate_rollback_spec(session: Session, spec: AgentSpec) -> None:
         raise InvalidAgentSpecError("; ".join(problems))
 
 
+def parse_spec(values: dict[str, object]) -> AgentSpec:
+    """Builds a spec from loose values, reporting what is wrong as a spec problem.
+
+    Exists so specs that do not arrive through a request body are rejected like any other invalid
+    spec; used by `merge_spec_patch` and by the designer.
+
+    Args:
+        values: The fields of the spec.
+
+    Returns:
+        AgentSpec: the validated spec.
+
+    Raises:
+        InvalidAgentSpecError: If the values do not form a valid spec.
+    """
+    try:
+        return AgentSpec.model_validate(values)
+    except ValidationError as error:
+        raise InvalidAgentSpecError(_describe_validation_error(error)) from error
+
+
 def merge_spec_patch(spec: AgentSpec, patch: AgentSpecPatch) -> AgentSpec:
     """Applies a partial change to a spec and validates the outcome.
 
@@ -175,24 +196,20 @@ def merge_spec_patch(spec: AgentSpec, patch: AgentSpecPatch) -> AgentSpec:
     Raises:
         InvalidAgentSpecError: If the result is not a valid spec or equals the original.
     """
-    values = {**spec.model_dump(), **patch.model_dump(exclude_unset=True)}
-    try:
-        merged = AgentSpec.model_validate(values)
-    except ValidationError as error:
-        raise InvalidAgentSpecError(_describe_validation_error(error)) from error
+    merged = parse_spec({**spec.model_dump(), **patch.model_dump(exclude_unset=True)})
     if merged == spec:
         raise InvalidAgentSpecError("The change is identical to the active version")
     return merged
 
 
 def _describe_validation_error(error: ValidationError) -> str:
-    """Summarizes why a merged spec is invalid.
+    """Summarizes why the values of a spec are invalid.
 
     Exists because pydantic's own text is long and links to its documentation; used by
-    `merge_spec_patch`.
+    `parse_spec`.
 
     Args:
-        error: The validation error of the merged spec.
+        error: The validation error of the spec.
 
     Returns:
         str: one `field: reason` entry per problem, separated by semicolons.

@@ -39,6 +39,22 @@ def insert_knowledge_base(session: Session, draft: KnowledgeBaseDraft) -> Knowle
     return KnowledgeBase.model_validate(dict(row))
 
 
+def list_knowledge_bases(session: Session) -> list[KnowledgeBase]:
+    """Lists the knowledge bases, ordered by name.
+
+    Exists so the designer can only assign a base that exists; used by `bia/builder/designer/`.
+
+    Args:
+        session: The open session to read through.
+
+    Returns:
+        list[KnowledgeBase]: every base.
+    """
+    sql = load_sql(DatabaseTable.KNOWLEDGE_BASES, SqlOperation.LIST)
+    rows = session.execute(text(sql)).mappings()
+    return [KnowledgeBase.model_validate(dict(row)) for row in rows]
+
+
 def get_knowledge_base(session: Session, knowledge_base_id: UUID) -> KnowledgeBase:
     """Retrieves one knowledge base.
 

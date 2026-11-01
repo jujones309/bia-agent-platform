@@ -8,6 +8,8 @@ from bia.agents.artifacts import Agent, AgentDraft, AgentKind, AgentSpec, AgentS
 from bia.database.queries import DatabaseTable, SqlOperation, load_sql
 
 _FIRST_VERSION_NUMBER = 1
+_PLATFORM_OWNER_AREA = "Plataforma"
+_PLATFORM_CREATOR = "bia-agent-platform"
 
 
 class AgentNotFoundError(LookupError):
@@ -139,7 +141,41 @@ def set_active_version(session: Session, agent_id: UUID, version_number: int) ->
     return _to_agent(session.execute(text(sql), parameters), agent_id)
 
 
-def insert_version(session: Session, agent_id: UUID, spec: AgentSpec) -> AgentVersion:
+def upsert_system_agent(session: Session, agent_id: UUID, name: str, description: str) -> None:
+    """Registers a published part of the platform, or refreshes its name and description.
+
+    Exists so the system agents follow the code, and so concurrent startups cannot duplicate them:
+    their identifiers are fixed. Used by `sync_system_agents`, whose transaction also inserts the
+    first version of a new one. They have no embedding, because they are never duplicates.
+
+    Args:
+        session: The open session whose transaction contains the write.
+        agent_id: The fixed identifier of the system agent.
+        name: The name shown in the inventories.
+        description: What the agent does for the platform.
+
+    Returns:
+        None: the row is written inside the session's transaction.
+    """
+    parameters = {
+        "agent_id": str(agent_id),
+        "name": name,
+        "description": description,
+        "owner_area": _PLATFORM_OWNER_AREA,
+        "creator": _PLATFORM_CREATOR,
+        "status": AgentStatus.PUBLISHED,
+        "kind": AgentKind.SYSTEM,
+        "active_version_number": _FIRST_VERSION_NUMBER,
+    }
+    session.execute(text(load_sql(DatabaseTable.AGENTS, SqlOperation.UPSERT)), parameters)
+
+
+def insert_version(
+    session: Session,
+    agent_id: UUID,
+    spec: AgentSpec,
+    designer_justification: str | None = None,
+) -> AgentVersion:
     """Appends a version to an agent, at the next number of its sequence.
 
     Exists because a spec is never overwritten: every change is a new row. Used by the
@@ -149,12 +185,17 @@ def insert_version(session: Session, agent_id: UUID, spec: AgentSpec) -> AgentVe
         session: The open session whose transaction contains the write.
         agent_id: The agent the version belongs to.
         spec: The validated spec.
+        designer_justification: Why the designer proposed it; None if the version was manual.
 
     Returns:
         AgentVersion: the stored version, with its number.
     """
     sql = load_sql(DatabaseTable.AGENT_VERSIONS, SqlOperation.INSERT)
-    parameters = {"agent_id": str(agent_id), "spec": spec.model_dump_json()}
+    parameters = {
+        "agent_id": str(agent_id),
+        "spec": spec.model_dump_json(),
+        "designer_justification": designer_justification,
+    }
     row = session.execute(text(sql), parameters).mappings().one()
     return AgentVersion.model_validate(dict(row))
 

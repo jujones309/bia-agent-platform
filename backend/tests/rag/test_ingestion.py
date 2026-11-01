@@ -3,10 +3,11 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import Connection, Uuid, column, func, select, table
 
+from bia.database.connection import database_session
 from bia.providers.base import ProviderError
 from bia.rag.chunking import InvalidDocumentError
 from bia.rag.ingestion import ingest_document
-from bia.rag.repository import KnowledgeBaseNotFoundError
+from bia.rag.repository import KnowledgeBaseNotFoundError, list_knowledge_bases
 from bia.rag.retrieval import search_knowledge
 from tests.providers.fake import FakeModelProvider
 from tests.rag.seed import FIRST_SECTION, build_draft, new_base
@@ -133,3 +134,13 @@ class _FailingEmbed:
             ProviderError: Always.
         """
         raise ProviderError("Se cayó")
+
+
+def test_list_knowledge_bases_returns_what_the_designer_can_assign(connection: Connection) -> None:
+    """Verifies a new base is offered, with the identifier a spec must reference."""
+    base_id = new_base(connection)
+
+    with database_session(connection) as session:
+        bases = list_knowledge_bases(session)
+
+    assert base_id in [base.id for base in bases]

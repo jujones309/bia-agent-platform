@@ -6,10 +6,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from bia.catalog.models.artifacts import ModelSize
 from bia.catalog.models.repository import (
     CatalogModelNotFoundError,
     EmbeddingModelUnavailableError,
+    ModelSizeUnavailableError,
     find_embedding_model,
+    find_model_by_size,
     get_catalog_model,
     list_catalog_models,
 )
@@ -66,3 +69,14 @@ def test_find_embedding_model_fails_clearly_if_only_chat_models_are_active(
     """Verifies a chat model is never used to embed; the seeded one is covered on Postgres."""
     with pytest.raises(EmbeddingModelUnavailableError, match="no active embedding model"):
         find_embedding_model(session)
+
+
+def test_find_model_by_size_skips_retired_models(session: Session) -> None:
+    """Verifies a system agent is never given a retired model, though one sorts after it."""
+    assert str(find_model_by_size(session, ModelSize.SMALL).id) == ACTIVE_MODEL_ID
+
+
+def test_find_model_by_size_names_the_missing_size(session: Session) -> None:
+    """Verifies an incomplete catalog stops the startup with a reason that says what to add."""
+    with pytest.raises(ModelSizeUnavailableError, match="no active 'large' model"):
+        find_model_by_size(session, ModelSize.LARGE)

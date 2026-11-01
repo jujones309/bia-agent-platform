@@ -2,7 +2,7 @@
 -- inserted, which is what keeps them immutable.
 -- Consumed by insert_version in bia/agents/repository.py, with the agent's row already locked
 -- or just created.
-INSERT INTO agent_versions (agent_id, version_number, spec)
+INSERT INTO agent_versions (agent_id, version_number, spec, designer_justification)
 VALUES (
     CAST(:agent_id AS uuid),
     (
@@ -10,7 +10,8 @@ VALUES (
         FROM agent_versions
         WHERE agent_id = CAST(:agent_id AS uuid)
     ),
-    CAST(:spec AS jsonb)
+    CAST(:spec AS jsonb),
+    :designer_justification
 )
 RETURNING
     id,
