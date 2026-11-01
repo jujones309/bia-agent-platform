@@ -46,7 +46,12 @@ class RunRecorder:
         self._bind = bind
 
     def start_run(
-        self, agent_id: UUID, agent_version_id: UUID, origin: RunOrigin, input_text: str
+        self,
+        agent_id: UUID,
+        agent_version_id: UUID,
+        origin: RunOrigin,
+        input_text: str,
+        already_elapsed_ms: int = 0,
     ) -> RunRecord:
         """Opens the record of an execution in the running state.
 
@@ -58,6 +63,8 @@ class RunRecorder:
             agent_version_id: The exact version being executed.
             origin: What triggered the execution.
             input_text: The input the agent received.
+            already_elapsed_ms: How long the execution has been going on, for work that had to
+                happen before its run could exist, so the run's duration still covers it.
 
         Returns:
             RunRecord: the open run, whose `id` the following calls need.
@@ -68,6 +75,7 @@ class RunRecorder:
             "origin": origin,
             "input": input_text,
             "status": RunStatus.RUNNING,
+            "already_elapsed_ms": already_elapsed_ms,
         }
         with database_session(self._bind) as session:
             sql = load_sql(DatabaseTable.RUNS, SqlOperation.INSERT)

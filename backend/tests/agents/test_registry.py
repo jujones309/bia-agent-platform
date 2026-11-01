@@ -188,6 +188,8 @@ def test_create_traces_the_embedding_as_a_closed_run_with_its_cost(
     assert run.total_cost > 0
     assert [step.step_type for step in run.steps] == [StepType.LLM_CALL]
     assert run.steps[0].output == {"embedding_dimensions": _EMBEDDING_DIMENSIONS}
+    assert run.latency_ms is not None
+    assert run.latency_ms >= run.steps[0].latency_ms  # the run opens after the call, yet covers it
 
 
 def test_create_rejects_an_invalid_spec_without_spending_or_writing(

@@ -60,7 +60,9 @@ def _trace_embedding(
         None: the run is written and closed.
     """
     recorder = RunRecorder(bind)
-    run = recorder.start_run(version.agent_id, version.id, RunOrigin.BUILDER, description)
+    run = recorder.start_run(
+        version.agent_id, version.id, RunOrigin.BUILDER, description, result.latency_ms
+    )
     dimensions = len(result.embeddings[0])
     recorder.add_step(
         run.id,

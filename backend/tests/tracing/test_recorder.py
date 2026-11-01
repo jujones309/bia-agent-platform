@@ -157,6 +157,22 @@ def test_finish_measures_the_duration_of_the_run(
     assert run.finished_at > run.started_at
 
 
+def test_a_run_opened_late_covers_the_time_already_elapsed(
+    connection: Connection, recorder: RunRecorder
+) -> None:
+    """Verifies work done before the run could exist still counts in its duration and start."""
+    agent_id = insert_agent(connection)
+    version_id = insert_agent_version(connection, agent_id)
+
+    opened = recorder.start_run(agent_id, version_id, RunOrigin.BUILDER, "texto", 5000)
+    run = recorder.finish_run(opened.id, "listo")
+
+    assert run.latency_ms is not None
+    assert 5000 <= run.latency_ms < 60000
+    assert run.finished_at is not None
+    assert (run.finished_at - run.started_at).total_seconds() >= 5
+
+
 def test_fail_stores_the_reason_and_keeps_what_was_spent(
     connection: Connection, recorder: RunRecorder, open_run: RunRecord
 ) -> None:
