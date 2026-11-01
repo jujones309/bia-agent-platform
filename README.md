@@ -29,10 +29,11 @@ El flujo para crear un agente, llamado Agent Builder, es:
 |---|---|---|
 | 0 | Setup y deploy temprano | Terminada |
 | 1 | Modelo de datos y base | Terminada |
-| 2-14 | Provider, catálogos, trazas, runtime, Builder, frontend y entrega | Pendientes |
+| 2 | Provider de modelos | Terminada |
+| 3-14 | Catálogos, trazas, runtime, Builder, frontend y entrega | Pendientes |
 
-Hoy existen la API con `GET /health`, la protección con contraseña y el esquema de base de
-datos. El Builder y el runtime todavía no están construidos. El detalle está en
+Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos
+y el provider de modelos. El Builder y el runtime todavía no están construidos. El detalle está en
 [docs/PLAN.md](docs/PLAN.md).
 
 ## Stack
@@ -198,3 +199,70 @@ INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/database
 
 Estas pruebas crean tablas y siembran filas en esa base. Sin esta variable nunca tocan la base
 de `.env`.
+
+---
+
+## Guía: fase 2 — Provider de modelos
+
+Toda llamada a un LLM pasa por el contrato `ModelProvider`
+([base.py](backend/bia/providers/base.py)). Fuera de `bia/providers/openai/` no se importa `openai`.
+
+### Llamar a un modelo
+
+El id del modelo sale siempre del catálogo (`provider_model_id`), nunca de un literal en el código.
+
+```python
+from bia.providers.artifacts import ChatMessage, MessageRole
+from bia.providers.cost import compute_cost
+from bia.providers.factory import get_provider
+
+provider = get_provider(catalog_model.provider)
+messages = [ChatMessage(role=MessageRole.USER, content="¿Cuál es mi saldo?")]
+
+result = provider.chat(messages, catalog_model.provider_model_id)
+cost = compute_cost(result.usage, catalog_model)
+```
+
+| Método | Para qué sirve | Qué devuelve |
+|---|---|---|
+| `chat(messages, model, tools)` | Un turno de conversación, con tools opcionales | `ChatResult` |
+| `chat_structured(messages, response_model, model)` | Respuesta validada contra un modelo pydantic | `StructuredChatResult` (la instancia está en `parsed`) |
+| `embed(texts, model)` | Embeddings de un lote en una sola llamada | `EmbeddingResult` |
+
+Todos los resultados incluyen `usage` y `latency_ms`, los datos que necesitan las trazas. Si la
+llamada falla o la respuesta está truncada, rechazada o vacía, se lanza `ProviderError`.
+
+Los argumentos de un `ToolCall` llegan como el JSON crudo que escribió el modelo, y pueden ser
+inválidos. Validarlos le corresponde al runtime.
+
+### Por qué se usa la API de Responses
+
+Con los modelos sembrados, Chat Completions rechaza las tools, así que el provider usa Responses.
+Las llamadas van con `store=False` y la conversación se reenvía completa en cada turno.
+
+Estos modelos tampoco aceptan `temperature`, por eso el contrato no la expone.
+
+### Probar código que usa un LLM
+
+Las pruebas nunca llaman a la API real. Usa `FakeModelProvider`
+([fake.py](backend/tests/providers/fake.py)) y programa sus respuestas en orden:
+
+```python
+from tests.providers.fake import FakeModelProvider
+
+provider = FakeModelProvider()
+provider.queue_tool_calls([tool_call])
+provider.queue_text("Tu saldo es 100")
+```
+
+Si el código hace más llamadas de las programadas, la prueba falla. `provider.chat_requests`
+guarda lo que recibió cada llamada.
+
+### Agregar un proveedor
+
+1. Agrega el miembro a `ProviderName` en [artifacts.py](backend/bia/providers/artifacts.py).
+2. Crea `bia/providers/<proveedor>/` con una clase que implemente `ModelProvider`.
+3. Registra su constructor en `_PROVIDER_BUILDERS`, en
+   [factory.py](backend/bia/providers/factory.py).
+
+Las pruebas fallan si un miembro del enum no tiene constructor registrado.

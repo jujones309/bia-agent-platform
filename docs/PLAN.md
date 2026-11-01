@@ -77,13 +77,13 @@ Objetivo: el esquema completo documentado y aplicado en Supabase.
 
 Objetivo: una sola puerta para hablar con LLMs, con uso y costo medidos.
 
-- [ ] **2.1 Contrato** — `bia/providers/artifacts.py` (`ChatMessage`, `ToolCall`, `ChatResult` con `usage` y `latency_ms`, `EmbeddingResult`) y la clase abstracta `ModelProvider` (`chat`, `chat_structured`, `embed`).
-- [ ] **2.2 Enum de proveedores** — `ProviderName` y una factory `get_provider(provider_name)`. *Listo cuando:* un proveedor desconocido lanza un error claro.
-- [ ] **2.3 OpenAI: chat** — `bia/providers/openai/` implementa `chat` con soporte de tools y mide latencia. *Listo cuando:* un script manual devuelve respuesta y uso de tokens.
-- [ ] **2.4 OpenAI: structured output** — `chat_structured(messages, response_model)` que devuelve una instancia pydantic validada.
-- [ ] **2.5 OpenAI: embeddings** — `embed(texts)` en lote.
-- [ ] **2.6 Cálculo de costo** — Función pura `compute_cost(usage, catalog_model)` con tests de casos concretos.
-- [ ] **2.7 Provider falso** — `FakeModelProvider` para tests, con respuestas y tool calls programables. *Listo cuando:* lo usa al menos un test.
+- [x] **2.1 Contrato** — `bia/providers/artifacts.py` (`ChatMessage`, `ToolCall`, `ChatResult` con `usage` y `latency_ms`, `EmbeddingResult`) y la clase abstracta `ModelProvider` (`chat`, `chat_structured`, `embed`).
+- [x] **2.2 Enum de proveedores** — `ProviderName` y una factory `get_provider(provider_name)`. *Listo cuando:* un proveedor desconocido lanza un error claro.
+- [x] **2.3 OpenAI: chat** — `bia/providers/openai/` implementa `chat` con soporte de tools y mide latencia. *Listo cuando:* un script manual devuelve respuesta y uso de tokens.
+- [x] **2.4 OpenAI: structured output** — `chat_structured(messages, response_model)` que devuelve una instancia pydantic validada.
+- [x] **2.5 OpenAI: embeddings** — `embed(texts)` en lote.
+- [x] **2.6 Cálculo de costo** — Función pura `compute_cost(usage, catalog_model)` con tests de casos concretos.
+- [x] **2.7 Provider falso** — `FakeModelProvider` para tests, con respuestas y tool calls programables. *Listo cuando:* lo usa al menos un test.
 
 ## Fase 3 — Catálogos
 
