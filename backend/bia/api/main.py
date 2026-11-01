@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from bia.api import tracing as tracing_api
 from bia.api.artifacts import HealthResponse, HealthStatus
 from bia.api.auth import BasicAuthMiddleware, PublicPath
 from bia.api.catalog import models as catalog_models
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     )
     application.include_router(catalog_models.router)
     application.include_router(catalog_tools.router)
+    application.include_router(tracing_api.router)
     logger.info("Application started in %s environment", settings.environment.value)
     return application
 
