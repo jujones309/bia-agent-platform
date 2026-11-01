@@ -126,11 +126,14 @@ stateDiagram-v2
     draft --> testing: correr evals
     testing --> published: pasa el gate
     published --> testing: editar o cambiar de versión
+    draft --> archived: archivar
+    testing --> archived: archivar
+    published --> archived: archivar
 ```
 
 `published` promete que lo que se ejecuta pasó el gate. Por eso un cambio en un agente publicado lo devuelve a
-`testing`, y lo saca de la búsqueda de duplicados hasta volver a publicarse. El estado `archived` existe en el modelo,
-pero todavía no hay endpoint para llegar a él.
+`testing`, y lo saca de la búsqueda de duplicados hasta volver a publicarse. Archivar también lo saca de esa búsqueda,
+de forma definitiva, y conserva sus versiones, casos y trazas.
 
 Los agentes de la plataforma también son agentes: el juez de duplicados, el diseñador, el generador de casos y el
 juez de evals tienen tipo `system`, versiones y trazas, y aparecen en los inventarios junto a los de los empleados.

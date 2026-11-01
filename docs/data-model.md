@@ -70,7 +70,7 @@ Identidad estable de un agente; su configuración vive en `agent_versions`.
 | `description` | `text` | Qué necesidad cubre; es el texto que compara la detección de duplicados. |
 | `owner_area` | `text` | Área de Bia responsable del agente. |
 | `creator` | `text` | Persona que lo creó. |
-| `status` | `text` | Ciclo de vida. Cerrado: `draft`, `testing`, `published`, `archived`. Una corrida de evals pasa `draft` a `testing`; solo el gate publica, y cambiar la versión activa de un agente `published` de empleado lo devuelve a `testing`. |
+| `status` | `text` | Ciclo de vida. Cerrado: `draft`, `testing`, `published`, `archived`. Una corrida de evals pasa `draft` a `testing`; solo el gate publica, cambiar la versión activa de un agente `published` de empleado lo devuelve a `testing`, y archivar es definitivo desde la API y la interfaz. |
 | `kind` | `text` | Cerrado: `user` (creado por empleados), `system` (partes de la plataforma). |
 | `description_embedding` | `vector(1536)` | Embedding de `description` para buscar duplicados; nulo hasta generarlo. |
 | `active_version_number` | `integer` | Número de la versión vigente; nulo antes de la primera. Es un número y no una FK para evitar un ciclo entre `agents` y `agent_versions`. |
@@ -114,6 +114,7 @@ Versiones inmutables de la spec. Único por `(agent_id, version_number)`.
 | `valid_from` | `date` | Desde cuándo rige el contenido; nulo si no aplica. |
 | `valid_until` | `date` | Hasta cuándo rige; nulo si sigue vigente. |
 | `created_at` | `timestamptz` | Cuándo se ingirió. |
+| `retired_at` | `timestamptz` | Cuándo se retiró de la base; nulo mientras está vigente. Al retirarlo se borran sus chunks, y reingerir el título lo vuelve a poner vigente. |
 
 ### `knowledge_chunks`
 
@@ -183,6 +184,7 @@ Un paso dentro de un run. Único por `(run_id, step_order)`.
 | `expected_behavior` | `text` | Qué debería hacer el agente; contra esto compara el juez. |
 | `origin` | `text` | Cerrado: `generated`, `manual`. |
 | `created_at` | `timestamptz` | Cuándo se creó. |
+| `retired_at` | `timestamptz` | Cuándo dejó de contar para los reportes y el gate; nulo mientras está vigente. Sus `eval_results` se conservan. |
 
 ### `eval_results`
 
@@ -211,6 +213,7 @@ versión.
 | `description` | `text` | Qué logra el flujo. |
 | `orchestration_type` | `text` | Forma del flujo. Validado con enum en Python: `single_agent`, `sequential`. |
 | `created_at` | `timestamptz` | Cuándo se registró. |
+| `retired_at` | `timestamptz` | Cuándo salió del inventario; nulo mientras está vigente. Sus pasos se conservan. |
 
 ### `orchestration_steps`
 

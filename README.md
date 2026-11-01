@@ -55,6 +55,7 @@ frontend con la [guía de la fase 12](#guía-fase-12--frontend).
 | 12 | Frontend | Terminada |
 | 13 | Documento de arquitectura | Terminada |
 | 14 | Entrega | En curso: faltan el video y las invitaciones |
+| Mejoras, bloque 3 | Administración desde la interfaz | Terminado en la rama, sin desplegar |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
 el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime,
@@ -607,8 +608,9 @@ cuyo modelo fue retirado no acepta ediciones hasta que el mismo `PATCH` elija ot
 
 ### Limitaciones actuales
 
-- **El estado solo cambia por los evals** (ver fase 9). Todavía no hay endpoint para archivar.
-- **`PATCH` solo edita la spec.** El nombre, la descripción, el área y el creador no se pueden cambiar.
+- **El estado cambia por los evals** (ver fase 9) **y al archivar** (ver el bloque 3 de mejoras).
+- **`PATCH /agents/{id}` solo edita la spec.** El nombre, la descripción y el área se cambian con
+  `PATCH /agents/{id}/identity`. El creador no se puede cambiar.
 - **`POST /agents` no guarda justificación** y crea siempre agentes `user`. El Builder sí guarda
   `designer_justification` y registra agentes `system` (ver fase 8).
 - **Si falla la escritura de la traza** después de crear el agente, la respuesta es 500 pero el agente
@@ -652,7 +654,7 @@ Repite el segundo comando con `procedimientos-facturacion.md` (`procedure`) y
 
 - **Reingerir es seguro:** el documento se identifica por su título dentro de la base, y sus chunks se
   reemplazan completos. Si falla el embedding, la versión anterior queda intacta.
-- **Cambiar el título crea otro documento.** Todavía no hay forma de borrar uno por la API.
+- **Cambiar el título crea otro documento.** El anterior se retira aparte (ver el bloque 3 de mejoras).
 
 ### Cómo se divide cada tipo de documento
 
@@ -716,7 +718,7 @@ detalle queda en los logs.
   tokens, costo y latencia vuelven en la respuesta, y la ingesta también los escribe en los logs. Por eso
   no aparecen en las métricas ni en los inventarios.
 - **Reingerir siempre genera los embeddings de nuevo**, aunque el texto no haya cambiado.
-- **`POST /knowledge-bases` no evita nombres repetidos**, y no hay endpoints para listar bases.
+- **`POST /knowledge-bases` no evita nombres repetidos**, y las bases no se pueden borrar.
 - **La búsqueda recorre todos los chunks de la base**, porque no hay índice vectorial. Basta para unos
   pocos documentos; una base grande necesitará uno.
 
@@ -962,9 +964,8 @@ curl -u demo:$API_ACCESS_PASSWORD "localhost:8000/runs?agent_id=5d0c6f2e-8a51-4f
 
 ### Limitaciones actuales
 
-- **Los casos no se pueden borrar ni regenerar.** Un caso generado que esté mal escrito cuenta en contra, y
-  quitarlo requiere SQL a mano: primero sus filas de `eval_results` y luego la de `eval_cases`. Por la misma
-  razón, los casos no se actualizan si la spec cambia mucho; agrega casos manuales.
+- **Los casos no se actualizan si la spec cambia mucho.** Retira los que ya no apliquen y agrega casos manuales
+  (ver el bloque 3 de mejoras). Solo se puede generar otra vez cuando no queda ningún caso generado vigente.
 - **El generador no conoce los datos reales.** Puede inventar un número de cliente, de modo que el agente
   responde que no lo encontró. En la prueba real, un caso falló por esto. Para probar una consulta exitosa,
   agrega un caso manual con un cliente existente, como `100001`.
@@ -1067,8 +1068,8 @@ Todo el flujo, con el chequeo de control incluido, costó unos USD 0,034.
 ### Limitaciones actuales
 
 - **El flujo ya no se puede grabar desde cero sobre esta base.** `check` ahora responde `exists` para la
-  descripción original, y `propose` crearía un segundo agente, porque no vuelve a chequear duplicados. No hay
-  endpoint para borrar agentes ni documentos. Para grabar los pasos 2 a 7 hace falta una base nueva y migrada.
+  descripción original, y `propose` crearía un segundo agente, porque no vuelve a chequear duplicados. Los agentes
+  se pueden archivar, pero no borrar. Para grabar los pasos 2 a 7 hace falta otra descripción o una base nueva y migrada.
 - **Una pregunta que mezcla varios temas puede recuperar poco.** En un caso de evals con saldo, tarifa y
   reclamo a la vez, el agente dijo que solo encontró cargos adicionales sobre tarifas. Se abstuvo de inventar,
   así que el caso aprobó, pero la respuesta sirvió menos que la de una pregunta directa.
@@ -1154,7 +1155,8 @@ modelos coinciden con `cost_current_month`:
 
 - **Los flujos son descriptivos.** Documentan cómo se combinan los agentes, pero ningún motor los ejecuta: el
   Builder sigue llamando a cada parte desde su propio endpoint, y una persona decide cuándo pasar a la siguiente.
-- **No hay endpoints para crear flujos**, ni forma de borrar uno que ya se registró.
+- **No hay endpoints para crear flujos a mano.** Cada agente recibe el suyo al publicarse, y un flujo se puede
+  retirar (ver el bloque 3 de mejoras).
 - **La ingesta y la búsqueda directa no cuentan**, porque no quedan en `runs` (ver fase 7). Por eso el consumo de
   embeddings del inventario es menor que el real.
 - **Un run que se quedó en `running` suma 0** en `total_cost` y en `cost_current_month`, porque su total se
@@ -1206,11 +1208,13 @@ CI corre los cuatro en cada push.
 
 | Página | Qué permite |
 |---|---|
-| `/agents` | Ver estado, modelo, runs y costo de cada agente. "Probar" abre el playground y "Continuar" retoma un agente en `draft` o `testing`. |
+| `/agents` | Ver estado, modelo, runs y costo de cada agente. El nombre abre su detalle, "Probar" abre el playground y "Continuar" retoma un agente en `draft` o `testing`. |
+| `/agents/{id}` | Cambiar la identidad, ver métricas, volver a una versión anterior y archivar. |
+| `/knowledge` y `/knowledge/{id}` | Crear bases, cargar documentos y retirarlos. |
 | `/models` | Ver el catálogo con su adopción y consumo. |
-| `/orchestrations` | Ver cada flujo con sus pasos en orden. |
+| `/orchestrations` | Ver cada flujo con sus pasos en orden, y retirar los que no son de la plataforma. |
 | `/builder` | Describir la necesidad, confirmar si un agente existente sirve y, si no, proponer uno. |
-| `/builder/{id}` | Ajustar la spec junto a la justificación del diseñador, generar casos, correr evals y publicar. |
+| `/builder/{id}` | Ajustar la spec junto a la justificación del diseñador, elegir la base, generar, escribir y retirar casos, correr evals y publicar. |
 | `/agents/{id}/playground` | Hablar con un agente y abrir la traza de cada respuesta. |
 | `/runs` y `/runs/{id}` | Ver los 50 runs más recientes, filtrar por agente y abrir los pasos de cada uno. |
 
@@ -1261,11 +1265,6 @@ USD 0,028.
 
 - **El playground no tiene memoria.** Cada mensaje es un run independiente, porque `POST /agents/{id}/run` recibe
   una sola entrada. La página lo dice. Recargarla borra la conversación, no sus trazas.
-- **No se pueden agregar casos manuales desde la interfaz.** El endpoint existe (ver fase 9). Como el generador
-  inventa clientes, ninguno de los 10 casos de la prueba cubrió una consulta exitosa: terminaron en "no encontrado", en una aclaración o en un rechazo.
-- **La base de conocimiento no se puede cambiar en el formulario**, porque ningún endpoint lista las bases. Se
-  muestra su identificador. Tampoco hay pantalla para crear bases o ingerir documentos: sigue siendo por API.
-- **Sin pantalla para volver a una versión anterior ni para ver métricas**, aunque los endpoints existen.
 - **Una corrida de evals es una sola petición.** Si recargas la página durante una, el backend sigue pero la pantalla no
   lo muestra; revisa el resultado después. Sigue aplicando el límite de tiempo de la plataforma (ver fases 9 y 10).
 - **La justificación se muestra como la guarda el backend**, con claves en inglés (`model:`, `tools:`).
@@ -1340,10 +1339,124 @@ El 2026-11-01 se creó el agente `Resumen de reuniones` (`d92f57f6-50f4-4661-a84
 versión 2. La corrida de evals pasó por Vercel: 12 de 12 casos en 58 s. Este agente no usa herramientas, así que **no prueba el
 peor caso**: los 12 casos de facturación tardaron 3 min 31 s en local y no se han corrido en el despliegue.
 
-El agente queda en la base, porque no hay forma de borrarlo por API. Por eso sus runs ya no coinciden con las cifras de
+El agente queda en la base: archivarlo lo retira, pero conserva sus trazas. Por eso sus runs ya no coinciden con las cifras de
 [ARCHITECTURE.md](docs/ARCHITECTURE.md), que siguen fechadas el 2026-11-01.
 
 ### Enviar las invitaciones
 
 En GitHub, en Settings → Collaborators, invita a `diegogarsfe`, `tatianatorobia` y `juan.otavo@bia.app`, y confirma que aparecen
 como pendientes.
+
+---
+
+## Guía: bloque 3 de mejoras — Administración
+
+Quien crea un agente ya puede gestionarlo desde la interfaz, sin API ni SQL. El plan de este bloque está en
+[docs/MEJORAS.md](docs/MEJORAS.md).
+
+### Antes de desplegar
+
+**Este bloque sí necesita migración, y debe correr antes del deploy.** Agrega la columna `retired_at` a `eval_cases`,
+`knowledge_documents` y `orchestrations`, y el código nuevo la lee en cada consulta de esas tablas:
+
+```bash
+cd backend
+uv run python -m bia.database.migrate
+```
+
+La migración solo agrega columnas nulas, puede repetirse, y el código anterior sigue funcionando con ellas. El backend
+ahora también acepta `DELETE` por CORS.
+
+### Qué se puede hacer
+
+| Tarea | Dónde | Endpoint |
+|---|---|---|
+| Archivar un agente | Detalle del agente, botón "Archivar" | `POST /agents/{id}/archive` |
+| Cambiar nombre, descripción y área | Detalle del agente, "Identidad" | `PATCH /agents/{id}/identity` |
+| Ver métricas, por origen | Detalle del agente, "Métricas" | `GET /agents/{id}/metrics` |
+| Volver a una versión anterior | Detalle del agente, "Versiones" | `POST /agents/{id}/versions/{n}/activate` |
+| Elegir la base de un agente | Revisión de la spec, `/builder/{id}` | `GET /knowledge-bases`, `PATCH /agents/{id}` |
+| Escribir y retirar casos | Paso de evals, `/builder/{id}` | `POST` y `DELETE /agents/{id}/eval-cases` |
+| Crear una base | `/knowledge` | `POST /knowledge-bases` |
+| Cargar y retirar documentos | `/knowledge/{id}` | `POST .../ingest`, `GET .../documents`, `DELETE .../documents/{id}` |
+| Retirar un flujo | `/orchestrations` | `DELETE /orchestrations/{id}` |
+
+Un agente recibe su flujo de un solo agente al publicarse, en la misma transacción, y se ve en `/orchestrations`.
+
+### Qué conserva cada acción
+
+| Acción | Qué cambia | Qué se conserva |
+|---|---|---|
+| Archivar | Sale de la búsqueda de duplicados. No se edita su identidad, no pasa por evals y no se publica. | Versiones, casos y trazas. Sigue en `/agents`. |
+| Retirar un caso | Deja de contar en reportes y en el gate. | La fila y todos sus `eval_results`. |
+| Retirar un documento | Los agentes dejan de encontrarlo: sus chunks se borran. | La fila del documento, y lo que cada traza ya citó, porque los pasos guardan su propia copia. |
+| Retirar un flujo | Sale del inventario. | La fila y sus pasos. |
+
+### Reglas que conviene conocer
+
+- **Publicar no duplica ni revive flujos.** Si el agente ya está en cualquier flujo, incluso uno retirado, no se
+  registra otro. Así el asistente de facturación conserva el suyo, declarado a mano.
+- **Reactivar es explícito.** Reingerir un título devuelve el documento, y
+  `uv run python -m bia.orchestrations.flows --billing-agent-id <id>` devuelve el flujo de facturación.
+- **Cambiar la descripción genera un embedding nuevo**, trazado como un run de origen `builder`. Cambiar solo el
+  nombre o el área no gasta nada. Ninguna de las dos cosas saca al agente de `published`, porque el gate no las evalúa.
+- **Elegir una base marca `buscar_conocimiento`**, y desmarcar esa herramienta quita la base, porque el backend exige
+  las dos o ninguna.
+- **Los agentes `system` son de solo lectura en estas acciones**, porque los define el código. El flujo del Builder
+  tampoco se puede retirar.
+
+### Errores
+
+| Endpoint | Qué puede responder |
+|---|---|
+| `POST /agents/{id}/archive` | 404: el agente no existe. 409: es de sistema. Archivar dos veces no es un error. |
+| `PATCH /agents/{id}/identity` | 404: no existe el agente o su versión. 409: es de sistema o está archivado. 422: cuerpo inválido o sin cambios. 502: falló el embedding. 503: no hay modelo de embeddings activo. |
+| `DELETE /agents/{id}/eval-cases/{case_id}` | 404: no existe el agente, o no tiene ese caso vigente. 409: es de sistema o está archivado. |
+| `GET /knowledge-bases/{id}` y `.../documents` | 404: la base no existe. |
+| `DELETE /knowledge-bases/{id}/documents/{document_id}` | 404: la base no tiene ese documento vigente. |
+| `DELETE /orchestrations/{id}` | 404: no existe o ya se retiró. 409: es el flujo de la plataforma. |
+
+### Resultado de la prueba
+
+Se recorrió cada tarea con Chrome automatizado, sobre el build de producción, el backend local y una base Postgres
+desechable en Docker, así que **nada de esto quedó en la base de `.env`** ni en producción. **El proveedor de modelos fue
+simulado**, así que no se gastó en OpenAI y esta prueba no mide la calidad de las respuestas.
+
+| Paso | Resultado |
+|---|---|
+| Crear una base y cargar un `.md` | La página propone el título y reporta 2 fragmentos |
+| Retirar un documento | Sale de la lista y de la API |
+| Cambiar la descripción | Se guarda y su embedding queda como un run nuevo |
+| Elegir la base en la spec | Marca `buscar_conocimiento` y crea la versión 2 |
+| Escribir 9 casos y retirar uno | El reporte cuenta 8 |
+| Correr evals y publicar | 8 de 8; el agente aparece en `/orchestrations` |
+| Retirar ese flujo y recargar | Sigue fuera; el flujo del Builder no ofrece el botón |
+| Volver a la versión 1 | Avisa, y el agente vuelve a "En pruebas" |
+| Archivar | La página queda de solo lectura, las trazas no cambian y `/agents` ya no ofrece "Probar" |
+| Ancho de teléfono (390 px) | Sin desborde en las páginas nuevas |
+
+Que un agente archivado sale de la búsqueda y que una descripción nueva se encuentra se comprobó en las pruebas de
+integración, con vectores reales en pgvector. La migración se aplicó sobre una base creada con el esquema anterior.
+
+### Limitaciones actuales
+
+- **Archivar no se deshace** desde la API ni desde la interfaz.
+- **Un agente archivado todavía se puede ejecutar por API.** `POST /agents/{id}/run` no revisa el estado y la interfaz
+  solo oculta "Probar"; lo resuelve la tarea 2.4. `PATCH /agents/{id}` y volver a una versión tampoco lo revisan por API.
+- **Retirar casos puede ayudar a pasar el gate.** El mínimo de casos sigue aplicando y la fila queda en la base, pero
+  mientras no exista identidad por persona (tarea 2.1) no se registra quién lo hizo, ni la interfaz muestra los retirados.
+- **Los agentes publicados antes de este bloque no tienen flujo** hasta que se vuelvan a publicar.
+- **Las bases no se pueden borrar ni renombrar**, y los documentos se cargan como texto o Markdown; un PDF o un Word hay
+  que convertirlo antes.
+- **Cargar un documento largo es una sola petición síncrona**, sin progreso, y paga sus embeddings cada vez.
+
+### Pruebas de este bloque
+
+Los routers, los formularios y las pantallas corren en cada `uv run pytest` y `npm test`, también en CI. Las reglas contra
+la base requieren `INTEGRATION_DATABASE_URL`:
+
+```bash
+INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/agents tests/evals tests/rag tests/orchestrations tests/database
+```
+
+La prueba con navegador no quedó en el repo: se hizo una vez y no corre en CI.
