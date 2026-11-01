@@ -143,6 +143,7 @@ Una ejecución completa de un agente.
 | `input` | `text` | Entrada recibida. |
 | `output` | `text` | Respuesta final; nula mientras corre o si falló. |
 | `status` | `text` | Estado. Cerrado: `running`, `succeeded`, `failed`. |
+| `error` | `text` | Por qué falló; nulo si no falló. |
 | `total_tokens` | `integer` | Suma de los tokens de sus pasos. |
 | `total_cost` | `numeric(14,8)` | Suma en USD del costo de sus pasos. |
 | `latency_ms` | `integer` | Duración total; nula hasta terminar. |

@@ -32,11 +32,13 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | 2 | Provider de modelos | Terminada |
 | 3 | Catálogos (modelos y herramientas) | Terminada |
 | 4 | Trazas | Terminada |
-| 5-14 | Runtime, Builder, frontend y entrega | Pendientes |
+| 5 | Runtime de agentes | Terminada |
+| 6-14 | Registro, RAG, Builder, frontend y entrega | Pendientes |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
-el provider de modelos, los catálogos de modelos y herramientas y el registro de trazas. El Builder
-y el runtime todavía no están construidos, así que nada genera runs por sí solo. El detalle está en
+el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas y el runtime.
+El registro de agentes y el Builder todavía no están construidos, así que por ahora los agentes se
+crean a mano en la base. El detalle está en
 [docs/PLAN.md](docs/PLAN.md).
 
 ## Stack
@@ -349,8 +351,8 @@ INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/catalog/tools
 
 ## Guía: fase 4 — Trazas
 
-Cada ejecución queda en `runs` y cada uno de sus pasos en `run_steps`. El runtime todavía no existe:
-hasta la fase 5, los runs solo aparecen si alguien usa `RunRecorder` directamente.
+Cada ejecución queda en `runs` y cada uno de sus pasos en `run_steps`. El runtime escribe estas
+trazas por sí solo (ver fase 5); usa `RunRecorder` directamente solo si ejecutas LLMs por fuera de él.
 
 ### Registrar un run
 
@@ -381,9 +383,9 @@ Reglas que conviene conocer:
 
 - **Cada escritura hace su propio commit**, separado de la transacción de quien llama. Así, si la
   ejecución se cae, lo ya registrado no se pierde.
-- **`finish_run(run_id, None)` marca el run como `failed`**; con un texto, como `succeeded`. Hay que
-  llamarlo también cuando la ejecución falla: de lo contrario, el run queda en `running`.
-- **Los totales salen de los pasos**: `finish_run` suma tokens y costo en la base, y también
+- **Todo run se cierra**: `finish_run(run_id, output)` lo marca `succeeded` y
+  `fail_run(run_id, error)`, `failed`, con el motivo en `runs.error`. Si no, queda en `running`.
+- **Los totales salen de los pasos**: al cerrar se suman tokens y costo en la base, y también
   mide la latencia total. Un run fallido conserva lo que alcanzó a gastar.
 - **Un run cerrado no cambia**: escribir en él, o en un id inexistente, lanza `RunNotRunningError`.
 - **Un paso tiene `output` o `error`, nunca ambos ni ninguno**, y un `llm_call` exige `model_id`.
@@ -395,6 +397,7 @@ Reglas que conviene conocer:
 ```bash
 curl -u demo:$API_ACCESS_PASSWORD "localhost:8000/runs?agent_id=<id>&limit=20"
 curl -u demo:$API_ACCESS_PASSWORD localhost:8000/agents/<id>/metrics
+curl -u demo:$API_ACCESS_PASSWORD "localhost:8000/agents/<id>/metrics?origin=production"
 ```
 
 | Endpoint | Qué devuelve |
@@ -402,7 +405,8 @@ curl -u demo:$API_ACCESS_PASSWORD localhost:8000/agents/<id>/metrics
 | `GET /runs` | Los runs más recientes con sus pasos. `agent_id` es opcional; `limit` va de 1 a 200 (50 por defecto). |
 | `GET /agents/{id}/metrics` | `total_runs`, `total_cost`, `latency_p50_ms` y `error_rate` (de 0 a 1). Responde 404 si el agente no existe. |
 
-Las métricas incluyen runs de todos los orígenes, también evals y playground. El p50 y la tasa de
+Por defecto, las métricas incluyen runs de todos los orígenes, también evals y playground; con
+`origin` (`playground`, `eval`, `builder` o `production`) cuentan solo los de ese origen. El p50 y la tasa de
 error solo consideran runs terminados, y son `null` si todavía no hay ninguno. Los importes llegan
 como strings decimales; un cero puede verse como `0E-8`.
 
@@ -425,3 +429,76 @@ docker exec bia-pg psql -U postgres -d bia_test -c 'CREATE EXTENSION vector'
 INTEGRATION_DATABASE_URL="postgresql://postgres:test@localhost:55432/bia_test" uv run pytest
 docker rm -f bia-pg
 ```
+
+---
+
+## Guía: fase 5 — Runtime de agentes
+
+### Migración obligatoria en bases existentes
+
+Esta fase agrega la columna `runs.error`, y la migración no altera tablas que ya existen. Antes de
+desplegar, corre esto en el SQL editor de cada base ya migrada, o fallarán las escrituras y lecturas
+de runs:
+
+```sql
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS error text;
+```
+
+### Ejecutar un agente
+
+```bash
+curl -u demo:$API_ACCESS_PASSWORD -X POST localhost:8000/agents/<id>/run \
+  -H 'Content-Type: application/json' -d '{"input": "¿Cuál es el saldo del cliente 100001?"}'
+```
+
+| Respuesta | Cuándo |
+|---|---|
+| 200, `status: succeeded` | Hay respuesta en `output`. |
+| 200, `status: failed` | El run se ejecutó pero falló, con el motivo en `error`: falló el proveedor o se llegó al tope de iteraciones. |
+| 404 | El agente no existe o no tiene versión activa. |
+| 409 | La spec apunta a un modelo inexistente, o a una herramienta inexistente o retirada. No se gasta ningún token. |
+| 500 | Un error inesperado. El run queda cerrado como `failed`, salvo que la base sea lo que falló. |
+
+Toda respuesta 200 trae `run_id`; la traza se consulta en `GET /runs?agent_id=<id>`.
+
+### Crear un agente de prueba
+
+Los endpoints para crear agentes llegan en la fase 6. Hasta entonces, inserta una fila en `agents` y
+otra en `agent_versions`, y pon el número de esa versión en `agents.active_version_number`. El campo
+`agent_versions.spec` es un JSON con la forma de `AgentSpec`
+([artifacts.py](backend/bia/agents/artifacts.py)):
+
+```json
+{
+  "purpose": "Responder dudas de facturación",
+  "system_prompt": "Eres el asistente de facturación de Bia.",
+  "model_id": "<id de GET /models>",
+  "tool_names": ["consultar_factura"],
+  "guardrails": ["No inventes saldos."],
+  "max_iterations": 5
+}
+```
+
+- `guardrails` se agregan como lista al final del system prompt, así que escríbelos como instrucciones.
+- `max_iterations` va de 1 a 20. Cada iteración es una llamada al modelo.
+- Un campo desconocido invalida la spec. No hay `temperature`, porque los modelos sembrados no la
+  aceptan.
+- `knowledge_base_id` se acepta, pero el runtime todavía no lo usa: el RAG llega en la fase 7.
+
+### Cómo se comporta el loop
+
+- **Errores de herramienta**: JSON inválido, argumentos que no cumplen el schema, una herramienta no
+  asignada al agente o un error de la propia herramienta vuelven al modelo como mensaje, para que
+  pueda corregir. El paso queda con `error` y el run sigue.
+- **Caídas de una herramienta**: el modelo y la traza reciben un mensaje genérico, para no exponer
+  detalles internos. El detalle queda en los logs.
+- **Fallos del proveedor**: quedan como paso con `error` y terminan el run como `failed`.
+- **Conexiones**: las lecturas usan una transacción corta y cada traza la suya, para no retener una
+  conexión del pooler durante las llamadas al modelo.
+
+### Probar código que ejecuta agentes
+
+`FakeRunRecorder` ([fake.py](backend/tests/tracing/fake.py)) reemplaza la base, y junto con
+`FakeModelProvider` permite probar el loop en cada `uv run pytest`, también en CI. La carga desde la
+base y la traza completa en SQL real están en
+[test_execution.py](backend/tests/runtime/test_execution.py), y requieren `INTEGRATION_DATABASE_URL`.

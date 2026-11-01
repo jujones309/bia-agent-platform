@@ -110,13 +110,13 @@ Objetivo: todo lo que hace un agente queda registrado.
 
 Objetivo: un runtime genérico que ejecuta cualquier spec.
 
-- [ ] **5.1 Spec del agente** — `AgentSpec` en `bia/agents/artifacts.py`: propósito, system prompt, `model_id`, `tool_names`, `knowledge_base_id` opcional, guardrails, temperatura y máximo de iteraciones.
-- [ ] **5.2 Ensamblado de mensajes** — Construye los mensajes iniciales a partir de la spec y el input del usuario (system prompt + guardrails).
-- [ ] **5.3 Loop de tool-calling** — Llama al modelo, ejecuta tools y repite hasta obtener respuesta final o llegar al máximo de iteraciones. Respeta el límite de 40 líneas.
-- [ ] **5.4 Ejecución de tools** — Valida los argumentos contra el schema y convierte los errores de la tool en mensajes al modelo, sin romper el loop.
-- [ ] **5.5 Integración con trazas** — Cada llamada al LLM y cada tool se registra como paso.
-- [ ] **5.6 Tests del runtime** — Con el provider falso: respuesta directa, una tool, tool con error y tope de iteraciones.
-- [ ] **5.7 Endpoint de playground** — `POST /agents/{id}/run` que devuelve la respuesta y el `run_id`.
+- [x] **5.1 Spec del agente** — `AgentSpec` en `bia/agents/artifacts.py`: propósito, system prompt, `model_id`, `tool_names`, `knowledge_base_id` opcional, guardrails y máximo de iteraciones. Sin temperatura: los modelos sembrados no la aceptan (ver fase 2).
+- [x] **5.2 Ensamblado de mensajes** — Construye los mensajes iniciales a partir de la spec y el input del usuario (system prompt + guardrails).
+- [x] **5.3 Loop de tool-calling** — Llama al modelo, ejecuta tools y repite hasta obtener respuesta final o llegar al máximo de iteraciones. Respeta el límite de 40 líneas.
+- [x] **5.4 Ejecución de tools** — Valida los argumentos contra el schema y convierte los errores de la tool en mensajes al modelo, sin romper el loop.
+- [x] **5.5 Integración con trazas** — Cada llamada al LLM y cada tool se registra como paso.
+- [x] **5.6 Tests del runtime** — Con el provider falso: respuesta directa, una tool, tool con error y tope de iteraciones.
+- [x] **5.7 Endpoint de playground** — `POST /agents/{id}/run` que devuelve la respuesta y el `run_id`.
 
 ## Fase 6 — Registro de agentes
 
