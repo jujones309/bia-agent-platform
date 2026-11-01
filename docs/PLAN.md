@@ -183,11 +183,11 @@ Objetivo: el asistente de facturación creado a través de la plataforma, tal co
 
 Objetivo: la vista de conjunto que hoy le falta a Bia.
 
-- [ ] **11.1 Inventario de agentes** — `GET /inventory/agents`: cada agente con área, modelo, tools, base de conocimiento, estado, runs y costo acumulado.
-- [ ] **11.2 Inventario de modelos** — `GET /inventory/models`: cada modelo con cuántos agentes lo usan, tokens y costo total.
-- [ ] **11.3 Seed de orquestaciones** — Registrar el flujo del Builder (juez → diseñador → generador de casos → juez de evals) y el del asistente de facturación (un agente con dos tools).
-- [ ] **11.4 Inventario de orquestación** — `GET /inventory/orchestrations`: cada flujo con sus pasos, agentes y modelos.
-- [ ] **11.5 Resumen global** — `GET /inventory/summary`: total de agentes por estado, costo del mes y modelos en uso.
+- [x] **11.1 Inventario de agentes** — `GET /inventory/agents`: cada agente con área, modelo, tools, base de conocimiento, estado, runs y costo acumulado.
+- [x] **11.2 Inventario de modelos** — `GET /inventory/models`: cada modelo con cuántos agentes lo usan, tokens y costo total.
+- [x] **11.3 Seed de orquestaciones** — Registrar el flujo del Builder (juez → diseñador → generador de casos → juez de evals) y el del asistente de facturación (un agente con dos tools).
+- [x] **11.4 Inventario de orquestación** — `GET /inventory/orchestrations`: cada flujo con sus pasos, agentes y modelos.
+- [x] **11.5 Resumen global** — `GET /inventory/summary`: total de agentes por estado, costo del mes y modelos en uso.
 
 ## Fase 12 — Frontend
 

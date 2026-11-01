@@ -65,6 +65,8 @@ Verticals:
 | `bia/tracing/` | Records runs and steps (tokens, cost, latency, tool calls) |
 | `bia/rag/` | Document ingestion, chunking, embeddings, retrieval |
 | `bia/evals/` | Test cases, eval runs, LLM-as-judge, publish gate |
+| `bia/orchestrations/` | Registry of flows that combine agents and the definitions of those flows |
+| `bia/inventory/` | Read-only overview of agents, models, flows and global numbers |
 | `bia/providers/` | `ModelProvider` contract; `providers/openai/` implementation |
 | `bia/prompts/` | Shared loader of the `.md` prompts that live under `bia/<vertical>/prompts/` |
 | `bia/database/` | Connection/session handling; `database/queries/` holds all SQL |

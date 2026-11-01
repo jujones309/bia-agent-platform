@@ -38,14 +38,15 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | 8 | Agent Builder | Terminada |
 | 9 | Evals y publicación | Terminada |
 | 10 | Caso real end-to-end | Terminada |
-| 11-14 | Inventarios, frontend, documento y entrega | Pendientes |
+| 11 | Inventarios y orquestación | Terminada |
+| 12-14 | Frontend, documento y entrega | Pendientes |
 
 Hoy existen la API con `GET /health`, la protección con contraseña, el esquema de base de datos,
 el provider de modelos, los catálogos de modelos y herramientas, el registro de trazas, el runtime,
 el registro de agentes, las bases de conocimiento con búsqueda citable, el Agent Builder, que detecta
 duplicados y propone la spec, y los evals con su gate de publicación. Ya funciona toda la lista
-anterior por API, y el asistente de facturación ya se creó y publicó a través de la plataforma. Faltan
-los inventarios y el frontend. El detalle está en [docs/PLAN.md](docs/PLAN.md).
+anterior por API, el asistente de facturación ya se creó y publicó a través de la plataforma, y los
+inventarios muestran agentes, modelos, flujos y costos en una sola vista. Falta el frontend. El detalle está en [docs/PLAN.md](docs/PLAN.md).
 
 ## Stack
 
@@ -1053,3 +1054,97 @@ Todo el flujo, con el chequeo de control incluido, costó unos USD 0,034.
   tiempo máximo de la plataforma (ver fase 9). No se probó contra el despliegue; esa revisión es de la fase 14.
 - **10 de los 12 casos son generados**, y los 3 que piden un cliente concreto inventan su número, así que
   terminan en "no encontrado". Los clientes existentes los prueban solo los 2 casos manuales.
+
+---
+
+## Guía: fase 11 — Inventarios y orquestación
+
+No hay migración de tablas: esta fase usa `orchestrations` y `orchestration_steps`, que ya existían. **Al
+arrancar, la API ahora registra también el flujo del Builder.** Todos los endpoints son de solo lectura y no
+llaman a ningún LLM.
+
+### Consultar los inventarios
+
+```bash
+curl -u demo:$API_ACCESS_PASSWORD localhost:8000/inventory/agents
+curl -u demo:$API_ACCESS_PASSWORD localhost:8000/inventory/models
+curl -u demo:$API_ACCESS_PASSWORD localhost:8000/inventory/orchestrations
+curl -u demo:$API_ACCESS_PASSWORD localhost:8000/inventory/summary
+```
+
+| Endpoint | Qué devuelve |
+|---|---|
+| `GET /inventory/agents` | Cada agente, del más nuevo al más viejo: área, tipo, estado, versión, modelo, herramientas, base de conocimiento, `total_runs` y `total_cost`. |
+| `GET /inventory/models` | Cada modelo del catálogo: `agents_using`, `input_tokens`, `output_tokens` y `total_cost`. |
+| `GET /inventory/orchestrations` | Cada flujo con sus pasos en orden: agente, modelo, herramientas, qué recibe y qué entrega. |
+| `GET /inventory/summary` | `total_agents`, `system_agents`, `agents_by_status`, `cost_current_month` y `models_in_use`. |
+
+### Qué cuenta cada número
+
+- **Los agentes de sistema se incluyen** en todos los totales y en `agents_by_status`. Por eso una base con un
+  solo agente de empleado muestra 5 publicados; `system_agents` dice cuántos son de la plataforma.
+- **`total_runs` y `total_cost` suman todos los orígenes**, también evals y playground. Para separarlos, usa
+  `GET /agents/{id}/metrics?origin=`.
+- **`agents_using` y `models_in_use` miran la versión activa de los agentes no archivados.** El modelo de
+  embeddings nunca aparece en `models_in_use`, porque ninguna spec lo nombra, aunque sí muestra consumo.
+- **El consumo de un modelo es histórico.** Se suma por paso, así que incluye agentes archivados y versiones
+  anteriores.
+- **`cost_current_month`** suma los runs iniciados desde el primer día del mes en UTC. En Colombia, el mes
+  cambia a las 7 p. m. del último día.
+- **El modelo y las herramientas de un paso de un flujo salen de la versión activa de su agente**, así que
+  siguen cualquier edición. Un modelo inexistente en la spec se ve como `null`, sin ocultar al agente.
+
+### Los flujos registrados
+
+| Flujo | Tipo | Pasos | Cómo se registra |
+|---|---|---|---|
+| Agent Builder | `sequential` | Juez de duplicados → diseñador → generador de casos → juez de evals | Solo, en cada arranque |
+| Asistente de facturación | `single_agent` | El asistente, con sus dos herramientas | Con un comando, una vez por base |
+
+El flujo de facturación no se registra solo porque el asistente se crea por el Builder y su identificador
+cambia en cada base:
+
+```bash
+uv run python -m bia.orchestrations.flows --billing-agent-id <id del asistente>
+```
+
+Se puede repetir: si reconstruyes el asistente, el flujo pasa a apuntar al nuevo. Con un id inexistente, el
+comando falla y no escribe nada. En la base de `.env` ya se corrió con
+`9fab0cc7-1163-4ca6-b606-5165877092c6`.
+
+Para agregar un flujo, decláralo como `Flow` en [flows.py](backend/bia/orchestrations/flows.py), con un
+identificador fijo, y guárdalo con `save_flow`, que reemplaza los pasos anteriores.
+
+### Resultado en la base de `.env`
+
+Con la API local, cada endpoint respondió en cerca de 1 s. La suma de `total_cost` de los agentes y la de los
+modelos coinciden con `cost_current_month`:
+
+| Dato | Valor |
+|---|---|
+| Agentes | 5 publicados, 4 de ellos de sistema |
+| Costo del mes | USD 0,0336 |
+| GPT-6 Luna | 3 agentes, USD 0,0062 |
+| GPT-6.1 Sol | 2 agentes, USD 0,0274 |
+| Text Embedding 3 Small | 0 agentes, USD 0,00001 |
+
+### Limitaciones actuales
+
+- **Los flujos son descriptivos.** Documentan cómo se combinan los agentes, pero ningún motor los ejecuta: el
+  Builder sigue llamando a cada parte desde su propio endpoint, y una persona decide cuándo pasar a la siguiente.
+- **No hay endpoints para crear flujos**, ni forma de borrar uno que ya se registró.
+- **La ingesta y la búsqueda directa no cuentan**, porque no quedan en `runs` (ver fase 7). Por eso el consumo de
+  embeddings del inventario es menor que el real.
+- **Un run que se quedó en `running` suma 0** en `total_cost` y en `cost_current_month`, porque su total se
+  calcula al cerrarlo, pero sus pasos sí cuentan en el inventario de modelos. En ese caso las sumas no coinciden.
+- **Los inventarios no tienen paginación ni filtros**, y cada consulta recorre todos los runs y pasos, porque no
+  hay índices. Basta para el volumen actual.
+
+### Pruebas de esta fase
+
+Los routers y las reglas del resumen corren en cada `uv run pytest`, también en CI. Las consultas y el registro
+de flujos usan Postgres, así que requieren `INTEGRATION_DATABASE_URL` (ver la base desechable en la fase 4):
+
+```bash
+INTEGRATION_DATABASE_URL="<connection string>" uv run pytest tests/inventory tests/orchestrations
+```
