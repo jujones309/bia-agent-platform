@@ -28,7 +28,7 @@ generated code. A single generic runtime reads the spec and executes it.
 
 ## Stack
 
-- **Backend**: Python 3.12 + FastAPI, deployed on Railway.
+- **Backend**: Python 3.12 + FastAPI, deployed on Vercel.
 - **Database**: Supabase (Postgres + pgvector).
 - **LLM**: OpenAI, always accessed through the `ModelProvider` abstraction.
 - **Orchestration**: own tool-calling loop (no LangChain/LangGraph in the MVP).
@@ -281,14 +281,14 @@ Never use `print`. All output goes through the standard `logging` module.
 ## Configuration and secrets
 
 - All settings come from environment variables through `bia/settings/`
-  (`pydantic-settings`), read from `backend/.env` locally and from Railway variables in
+  (`pydantic-settings`), read from `backend/.env` locally and from Vercel variables in
   production.
 - `.env` is never committed; `backend/.env.example` lists every required variable.
 
 ## README
 
 `README.md` (root, in Spanish) explains the project and how to do everything built so far.
-A plan phase in `docs/PLAN.md` is not finished until the README is updated in that phase:
+A phase of work is not finished until the README is updated in that phase:
 
 - Add a `## Guía: fase N — <tema>` section with the how-to of each thing the phase added
   (commands to run, how to use or extend it, required variables, limitations).

@@ -257,7 +257,7 @@ de magnitud, no para garantizar el comportamiento con clientes reales.
 
 ## 6. Fases y cronograma
 
-La plataforma actual, construida según [PLAN.md](PLAN.md) con una estimación de unas 25 horas, equivale a la fase 0.
+La plataforma actual, construida con una estimación de unas 25 horas, equivale a la fase 0.
 Lo siguiente es una **propuesta**: las duraciones son estimaciones y dependen de quién la ejecute.
 
 | Fase | Duración | Qué entra | Cómo se sabe que salió bien | Riesgo principal |

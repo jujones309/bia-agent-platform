@@ -28,7 +28,6 @@ El flujo para crear un agente, llamado Agent Builder, es:
 | Recurso | Dónde |
 |---|---|
 | Documento de arquitectura | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| Guion del video | [docs/VIDEO_SCRIPT.md](docs/VIDEO_SCRIPT.md) |
 | Backend desplegado | https://bia-agent-platform.vercel.app (Swagger en `/docs`) |
 | Frontend desplegado | https://bia-agent-platform-frontend.vercel.app |
 | Video | Pendiente de grabar |
@@ -65,7 +64,7 @@ el registro de agentes, las bases de conocimiento con búsqueda citable, el Agen
 duplicados y propone la spec, y los evals con su gate de publicación. Ya funciona toda la lista
 anterior por API, el asistente de facturación ya se creó y publicó a través de la plataforma, y los
 inventarios muestran agentes, modelos, flujos y costos en una sola vista. El frontend permite hacer todo
-el flujo desde el navegador, en local; todavía no está desplegado. El detalle está en [docs/PLAN.md](docs/PLAN.md).
+el flujo desde el navegador, y ya está desplegado (ver [Entrega](#entrega)).
 
 ## Stack
 
@@ -80,7 +79,7 @@ el flujo desde el navegador, en local; todavía no está desplegado. El detalle 
 ```
 backend/bia/     Paquete Python, organizado por verticales (agents, builder, runtime, rag...)
 backend/tests/   Pruebas; replica la estructura de bia/
-docs/            Plan, modelo de datos, arquitectura y guion del video
+docs/            Modelo de datos y arquitectura
 frontend/src/    Next.js: páginas, componentes y un único cliente de la API
 frontend/tests/  Pruebas; replica la estructura de src/
 ```
@@ -1320,8 +1319,7 @@ revisaron renderizados en GitHub, porque esta rama no se ha subido.
 |---|---|---|
 | 14.1 README | Hecho | — |
 | 14.2 Revisión de deploy | Hecho | — |
-| 14.3 Guion del video | Hecho | — |
-| 14.4 Grabar el video | Pendiente | Grabarlo con [el guion](docs/VIDEO_SCRIPT.md) y subirlo |
+| 14.4 Grabar el video | Pendiente | Grabarlo y subirlo |
 | 14.5 Invitaciones | Pendiente | Las debe enviar quien administra el repo privado |
 
 ### Revisar el deploy
@@ -1352,8 +1350,7 @@ como pendientes.
 
 ## Guía: bloque 3 de mejoras — Administración
 
-Quien crea un agente ya puede gestionarlo desde la interfaz, sin API ni SQL. El plan de este bloque está en
-[docs/MEJORAS.md](docs/MEJORAS.md).
+Quien crea un agente ya puede gestionarlo desde la interfaz, sin API ni SQL.
 
 ### Antes de desplegar
 
