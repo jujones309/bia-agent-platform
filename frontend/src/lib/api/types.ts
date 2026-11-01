@@ -63,6 +63,13 @@ export type ModelSize = (typeof ModelSize)[keyof typeof ModelSize];
 export const OrchestrationType = { SINGLE_AGENT: "single_agent", SEQUENTIAL: "sequential" } as const;
 export type OrchestrationType = (typeof OrchestrationType)[keyof typeof OrchestrationType];
 
+/** Mirrors `DocumentType` of `bia/rag/artifacts.py`. */
+export const DocumentType = { TARIFF: "tariff", PROCEDURE: "procedure", FAQ: "faq" } as const;
+export type DocumentType = (typeof DocumentType)[keyof typeof DocumentType];
+
+/** Mirrors the member of `ToolName` that needs a knowledge base, in `bia/catalog/tools/artifacts.py`. */
+export const KNOWLEDGE_TOOL_NAME = "buscar_conocimiento";
+
 /** Mirrors `AgentSpec`. */
 export interface AgentSpec {
   purpose: string;
@@ -74,8 +81,24 @@ export interface AgentSpec {
   max_iterations: number;
 }
 
-/** Mirrors `AgentSpecPatch`: only the fields that change, and never the knowledge base here. */
-export type AgentSpecPatch = Partial<Omit<AgentSpec, "knowledge_base_id">>;
+/** Mirrors `AgentSpecPatch`: only the fields that change; a null knowledge base detaches it. */
+export type AgentSpecPatch = Partial<AgentSpec>;
+
+/** Mirrors `AgentIdentityPatch`: only the fields that change. */
+export interface AgentIdentityPatch {
+  name?: string;
+  description?: string;
+  owner_area?: string;
+}
+
+/** Mirrors `AgentMetrics`. */
+export interface AgentMetrics {
+  agent_id: string;
+  total_runs: number;
+  total_cost: string;
+  latency_p50_ms: number | null;
+  error_rate: number | null;
+}
 
 /** Mirrors `Agent`. */
 export interface Agent {
@@ -157,6 +180,7 @@ export interface OrchestrationInventoryItem {
   name: string;
   description: string;
   orchestration_type: OrchestrationType;
+  is_system: boolean;
   steps: OrchestrationStep[];
 }
 
@@ -200,6 +224,51 @@ export interface AgentProposalRequest {
 /** Mirrors `ProposedAgent`, with only what the frontend reads. */
 export interface ProposedAgent {
   agent: AgentDetail;
+}
+
+/** Mirrors `KnowledgeBaseDraft`. */
+export interface KnowledgeBaseDraft {
+  name: string;
+  description: string;
+}
+
+/** Mirrors `KnowledgeBase`. */
+export interface KnowledgeBase extends KnowledgeBaseDraft {
+  id: string;
+  created_at: string;
+}
+
+/** Mirrors `DocumentDraft`. */
+export interface DocumentDraft {
+  title: string;
+  document_type: DocumentType;
+  content: string;
+  valid_from: string | null;
+  valid_until: string | null;
+}
+
+/** Mirrors `KnowledgeDocument`. */
+export interface KnowledgeDocument {
+  id: string;
+  knowledge_base_id: string;
+  title: string;
+  document_type: DocumentType;
+  valid_from: string | null;
+  valid_until: string | null;
+  chunk_count: number;
+  created_at: string;
+}
+
+/** Mirrors `IngestionResult`, with only what the frontend reads. */
+export interface IngestionResult {
+  document_id: string;
+  chunks_ingested: number;
+}
+
+/** Mirrors `EvalCaseDraft`. */
+export interface EvalCaseDraft {
+  input: string;
+  expected_behavior: string;
 }
 
 /** Mirrors `EvalCase`. */

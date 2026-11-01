@@ -9,7 +9,7 @@ import { listAgentInventory } from "@/lib/api/client";
 import { AgentKind, AgentStatus } from "@/lib/api/types";
 import type { AgentInventoryItem } from "@/lib/api/types";
 import { formatCost, formatCount, orDash } from "@/lib/format";
-import { agentReviewPath, playgroundPath } from "@/lib/routes";
+import { agentDetailPath, agentReviewPath, playgroundPath } from "@/lib/routes";
 
 const HEADERS = ["Agente", "Área", "Estado", "Modelo", "Runs", "Costo", ""];
 
@@ -18,11 +18,15 @@ function canContinueBuilding(agent: AgentInventoryItem): boolean {
   return agent.kind === AgentKind.USER && isUnpublished;
 }
 
+function canChat(agent: AgentInventoryItem): boolean {
+  return agent.kind === AgentKind.USER && agent.status !== AgentStatus.ARCHIVED;
+}
+
 function AgentRow({ agent }: { agent: AgentInventoryItem }) {
   return (
     <tr>
       <td className="font-medium">
-        {agent.name}
+        {agent.kind === AgentKind.USER ? <Link href={agentDetailPath(agent.id)} className="text-link">{agent.name}</Link> : agent.name}
         {agent.kind === AgentKind.SYSTEM && <span className="ml-2 text-xs font-normal text-slate-500">Sistema</span>}
       </td>
       <td>{agent.owner_area}</td>
@@ -31,7 +35,7 @@ function AgentRow({ agent }: { agent: AgentInventoryItem }) {
       <td>{formatCount(agent.total_runs)}</td>
       <td className="whitespace-nowrap">{formatCost(agent.total_cost)}</td>
       <td className="space-x-3 whitespace-nowrap">
-        {agent.kind === AgentKind.USER && <Link href={playgroundPath(agent.id)} className="text-link">Probar</Link>}
+        {canChat(agent) && <Link href={playgroundPath(agent.id)} className="text-link">Probar</Link>}
         {canContinueBuilding(agent) && <Link href={agentReviewPath(agent.id)} className="text-link">Continuar</Link>}
       </td>
     </tr>
@@ -45,8 +49,8 @@ function renderAgentRow(agent: AgentInventoryItem) {
 /**
  * Shows every agent with its state, model, runs and cost.
  *
- * Exists as the overview of what exists in Bia. Agents still being built offer a way back to the
- * Builder, because a draft cannot be deleted and otherwise could not be reached again.
+ * Exists as the overview of what exists in Bia. The name of an employee's agent opens its detail, and
+ * agents still being built offer a shortcut back to the Builder.
  *
  * @returns The page content.
  */

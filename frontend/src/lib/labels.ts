@@ -1,5 +1,6 @@
 import {
   AgentStatus,
+  DocumentType,
   EvalVerdict,
   ModelSize,
   OrchestrationType,
@@ -55,4 +56,18 @@ export const MODEL_SIZE_LABEL: Record<ModelSize, string> = {
 export const ORCHESTRATION_TYPE_LABEL: Record<OrchestrationType, string> = {
   [OrchestrationType.SINGLE_AGENT]: "Un agente",
   [OrchestrationType.SEQUENTIAL]: "Secuencial",
+};
+
+/** The Spanish name of each document type; consumed by the knowledge base page. */
+export const DOCUMENT_TYPE_LABEL: Record<DocumentType, string> = {
+  [DocumentType.TARIFF]: "Tarifas",
+  [DocumentType.PROCEDURE]: "Procedimiento",
+  [DocumentType.FAQ]: "Preguntas frecuentes",
+};
+
+/** How to write each document type so it divides well; consumed by the document form. */
+export const DOCUMENT_TYPE_HINT: Record<DocumentType, string> = {
+  [DocumentType.TARIFF]: "Usa títulos con # para separar las secciones. Cada sección se busca por separado y no puede pasar de unos 8.000 caracteres.",
+  [DocumentType.PROCEDURE]: "Usa títulos con # para separar las secciones. Cada sección se busca por separado y no puede pasar de unos 8.000 caracteres.",
+  [DocumentType.FAQ]: "Cada pregunta debe ser un título con # que termine en ?, con su respuesta debajo. Otros títulos solo pueden agrupar preguntas, sin texto propio.",
 };

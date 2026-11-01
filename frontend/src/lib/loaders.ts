@@ -4,11 +4,22 @@ import {
   listActiveModels,
   listActiveTools,
   listAgentVersions,
+  listKnowledgeBases,
+  listKnowledgeDocuments,
+  getKnowledgeBase,
   listModels,
   listTools,
 } from "@/lib/api/client";
 import { ModelSize } from "@/lib/api/types";
-import type { AgentDetail, CatalogModel, CatalogTool, RunRecord } from "@/lib/api/types";
+import type {
+  AgentDetail,
+  AgentVersion,
+  CatalogModel,
+  CatalogTool,
+  KnowledgeBase,
+  KnowledgeDocument,
+  RunRecord,
+} from "@/lib/api/types";
 import { latestJustification } from "@/lib/specForm";
 
 /** Everything the review page of an agent needs. */
@@ -17,6 +28,19 @@ export interface AgentReviewData {
   justification: string | null;
   models: CatalogModel[];
   tools: CatalogTool[];
+  knowledgeBases: KnowledgeBase[];
+}
+
+/** Everything the detail page of an agent needs, apart from the metrics, which have their own filter. */
+export interface AgentOverviewData {
+  detail: AgentDetail;
+  versions: AgentVersion[];
+}
+
+/** Everything the page of a knowledge base needs. */
+export interface KnowledgeBaseData {
+  base: KnowledgeBase;
+  documents: KnowledgeDocument[];
 }
 
 /** Everything the trace page of a run needs. */
@@ -41,18 +65,42 @@ function canChat(model: CatalogModel): boolean {
  * @returns The agent, the reasons of the designer and the options.
  */
 export async function loadAgentReview(agentId: string): Promise<AgentReviewData> {
-  const [detail, versions, models, tools] = await Promise.all([
+  const [detail, versions, models, tools, knowledgeBases] = await Promise.all([
     getAgentDetail(agentId),
     listAgentVersions(agentId),
     listActiveModels(),
     listActiveTools(),
+    listKnowledgeBases(),
   ]);
   return {
     detail,
     justification: latestJustification(versions),
     models: models.filter(canChat),
     tools,
+    knowledgeBases,
   };
+}
+
+/**
+ * Loads an agent with the history of its versions.
+ *
+ * @param agentId - The agent to open.
+ * @returns The agent and its versions, oldest first.
+ */
+export async function loadAgentOverview(agentId: string): Promise<AgentOverviewData> {
+  const [detail, versions] = await Promise.all([getAgentDetail(agentId), listAgentVersions(agentId)]);
+  return { detail, versions };
+}
+
+/**
+ * Loads a knowledge base with what it holds.
+ *
+ * @param knowledgeBaseId - The base to open.
+ * @returns The base and its current documents.
+ */
+export async function loadKnowledgeBase(knowledgeBaseId: string): Promise<KnowledgeBaseData> {
+  const [base, documents] = await Promise.all([getKnowledgeBase(knowledgeBaseId), listKnowledgeDocuments(knowledgeBaseId)]);
+  return { base, documents };
 }
 
 /**

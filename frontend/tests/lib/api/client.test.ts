@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, listRuns, patchAgent, publishAgent, runAgent, verifyPassword } from "@/lib/api/client";
+import { ApiError, getAgentMetrics, listRuns, patchAgent, publishAgent, retireEvalCase, runAgent, verifyPassword } from "@/lib/api/client";
 import { readPassword, writePassword } from "@/lib/api/credentials";
+import { RunOrigin } from "@/lib/api/types";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -64,6 +65,43 @@ describe("request", () => {
     respond(200, []);
     await listRuns(null);
     expect(lastRequest().url).toBe("http://backend.test/runs?limit=50");
+  });
+});
+
+describe("removals", () => {
+  it("accepts a response without a body, which would break reading it as JSON", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(retireEvalCase("agent-1", "case-1")).resolves.toBeUndefined();
+
+    const { url, init } = lastRequest();
+    expect(url).toBe("http://backend.test/agents/agent-1/eval-cases/case-1");
+    expect(init.method).toBe("DELETE");
+  });
+
+  it("explains a failed removal like any other failure", async () => {
+    respond(404, { detail: "It has no such case" });
+
+    await expect(retireEvalCase("agent-1", "case-1")).rejects.toMatchObject({ status: 404, message: "It has no such case" });
+  });
+
+  it("closes the session when a removal is rejected for the password", async () => {
+    respond(401, {});
+
+    await expect(retireEvalCase("agent-1", "case-1")).rejects.toMatchObject({ status: 401 });
+    expect(readPassword()).toBeNull();
+  });
+});
+
+describe("getAgentMetrics", () => {
+  it("filters by origin only when one is given", async () => {
+    respond(200, {});
+    await getAgentMetrics("agent-1", null);
+    expect(lastRequest().url).toBe("http://backend.test/agents/agent-1/metrics");
+
+    respond(200, {});
+    await getAgentMetrics("agent-1", RunOrigin.EVAL);
+    expect(lastRequest().url).toBe("http://backend.test/agents/agent-1/metrics?origin=eval");
   });
 });
 

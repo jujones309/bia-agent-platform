@@ -9,6 +9,7 @@ const NAVIGATION = [
   { href: Route.AGENTS, label: "Agentes" },
   { href: Route.MODELS, label: "Modelos" },
   { href: Route.ORCHESTRATIONS, label: "Orquestación" },
+  { href: Route.KNOWLEDGE, label: "Conocimiento" },
   { href: Route.BUILDER, label: "Builder" },
   { href: Route.RUNS, label: "Runs" },
 ];

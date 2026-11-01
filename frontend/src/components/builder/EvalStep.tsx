@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
+import { EvalCaseForm } from "@/components/builder/EvalCaseForm";
 import { EvalOutcomes } from "@/components/builder/EvalOutcomes";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { ResourcePlaceholder } from "@/components/ui/ResourcePlaceholder";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
-import { generateEvalCases, getEvalReport, publishAgent, runEvals } from "@/lib/api/client";
+import { generateEvalCases, getEvalReport, publishAgent, retireEvalCase, runEvals } from "@/lib/api/client";
 import { AgentStatus, EvalCaseOrigin } from "@/lib/api/types";
 import type { Agent, EvalCaseOutcome, EvalReport } from "@/lib/api/types";
 import { formatPercent } from "@/lib/format";
@@ -18,6 +19,8 @@ interface EvalStepProps {
   onBack: () => void;
   onAgentChanged: () => void;
 }
+
+const RETIRE_CONFIRMATION = "¿Retirar este caso? Deja de contar para publicar, y sus resultados anteriores se conservan.";
 
 function isGenerated(outcome: EvalCaseOutcome): boolean {
   return outcome.case.origin === EvalCaseOrigin.GENERATED;
@@ -47,6 +50,11 @@ export function EvalStep({ agent, onBack, onAgentChanged }: EvalStepProps) {
   async function generate(): Promise<void> { await generateEvalCases(agent.id); reload(); }
   async function evaluate(): Promise<void> { await runEvals(agent.id); reload(); onAgentChanged(); }
   async function publish(): Promise<void> { await publishAgent(agent.id); setIsPublished(true); onAgentChanged(); }
+  async function retire(caseId: string): Promise<void> { await retireEvalCase(agent.id, caseId); reload(); }
+
+  function handleRetire(caseId: string): void {
+    if (window.confirm(RETIRE_CONFIRMATION)) void run(retire.bind(null, caseId));
+  }
 
   if (!report) return <ResourcePlaceholder error={loadError} />;
   return (
@@ -63,7 +71,8 @@ export function EvalStep({ agent, onBack, onAgentChanged }: EvalStepProps) {
         {error && <ErrorNotice message={error} />}
         {isPublished && <Link href={playgroundPath(agent.id)} className="text-link text-sm">Probar el agente en el playground</Link>}
       </div>
-      <EvalOutcomes outcomes={report.outcomes} />
+      <EvalCaseForm agentId={agent.id} isDisabled={isRunning} onAdded={() => reload()} />
+      <EvalOutcomes outcomes={report.outcomes} isDisabled={isRunning} onRetire={(caseId) => handleRetire(caseId)} />
     </div>
   );
 }

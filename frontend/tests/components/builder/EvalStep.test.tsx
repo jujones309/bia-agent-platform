@@ -2,14 +2,16 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { EvalStep } from "@/components/builder/EvalStep";
-import { ApiError, generateEvalCases, getEvalReport, publishAgent, runEvals } from "@/lib/api/client";
+import { addEvalCase, ApiError, generateEvalCases, getEvalReport, publishAgent, retireEvalCase, runEvals } from "@/lib/api/client";
 import { AgentStatus, EvalCaseOrigin } from "@/lib/api/types";
 import type { Agent } from "@/lib/api/types";
 import { buildAgent, buildPassedOutcome, buildReport } from "../../factories";
 
 vi.mock("@/lib/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/client")>()),
+  addEvalCase: vi.fn(),
   generateEvalCases: vi.fn(),
+  retireEvalCase: vi.fn(),
   getEvalReport: vi.fn(),
   publishAgent: vi.fn(),
   runEvals: vi.fn(),
@@ -95,6 +97,60 @@ describe("EvalStep", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("A case was added");
     expect(screen.getByRole("button", { name: "Publicar" })).toBeEnabled();
+  });
+
+  it("adds a case written by a person, which can then be run", async () => {
+    vi.mocked(addEvalCase).mockResolvedValue(buildPassedOutcome().case);
+    vi.mocked(getEvalReport).mockResolvedValueOnce(buildReport()).mockResolvedValue(buildReport({ total_cases: 1, outcomes: [{ ...buildPassedOutcome(), result: null }] }));
+    renderStep();
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText("Mensaje de prueba"), "Mi cliente es 100002");
+    await user.type(screen.getByLabelText("Qué debería hacer el agente"), "Da el saldo real");
+    await user.click(screen.getByRole("button", { name: "Agregar caso" }));
+
+    expect(addEvalCase).toHaveBeenCalledWith("agent-1", { input: "Mi cliente es 100002", expected_behavior: "Da el saldo real" });
+    expect(await screen.findByText("Pendiente")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Correr evals" })).toBeEnabled();
+    expect(screen.getByLabelText("Mensaje de prueba")).toHaveValue("");
+  });
+
+  it("keeps what the person wrote when a case is rejected", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(addEvalCase).mockRejectedValue(new Error("Agent is archived"));
+    vi.mocked(getEvalReport).mockResolvedValue(buildReport());
+    renderStep();
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText("Mensaje de prueba"), "Hola");
+    await user.type(screen.getByLabelText("Qué debería hacer el agente"), "Saluda");
+    await user.click(screen.getByRole("button", { name: "Agregar caso" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Agent is archived");
+    expect(screen.getByLabelText("Mensaje de prueba")).toHaveValue("Hola");
+  });
+
+  it("retires a case after confirming and refreshes the report", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(retireEvalCase).mockResolvedValue();
+    vi.mocked(getEvalReport).mockResolvedValueOnce(PASSING).mockResolvedValue(buildReport());
+    renderStep();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Retirar" }));
+
+    expect(retireEvalCase).toHaveBeenCalledWith("agent-1", "case-1");
+    await waitFor(() => expect(screen.queryByText("Cumple")).not.toBeInTheDocument());
+  });
+
+  it("retires nothing if the person does not confirm", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    vi.mocked(retireEvalCase).mockClear();
+    vi.mocked(getEvalReport).mockResolvedValue(PASSING);
+    renderStep();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Retirar" }));
+
+    expect(retireEvalCase).not.toHaveBeenCalled();
   });
 
   it("does not offer to publish an agent that is already published", async () => {

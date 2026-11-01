@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { getAgentDetail, getRun, listActiveModels, listActiveTools, listAgentVersions, listModels, listTools } from "@/lib/api/client";
+import { getAgentDetail, getKnowledgeBase, getRun, listActiveModels, listActiveTools, listAgentVersions, listKnowledgeBases, listKnowledgeDocuments, listModels, listTools } from "@/lib/api/client";
 import { ModelSize } from "@/lib/api/types";
-import { loadAgentReview, loadRunTrace } from "@/lib/loaders";
-import { buildAgent, buildRun, buildVersion, MODELS, TOOLS } from "../factories";
+import { loadAgentReview, loadKnowledgeBase, loadRunTrace } from "@/lib/loaders";
+import { buildAgent, buildRun, buildVersion, KNOWLEDGE_BASES, MODELS, TOOLS } from "../factories";
 
 vi.mock("@/lib/api/client");
 
@@ -13,11 +13,25 @@ describe("loadAgentReview", () => {
     vi.mocked(listAgentVersions).mockResolvedValue([buildVersion()]);
     vi.mocked(listActiveModels).mockResolvedValue([...MODELS, embedding]);
     vi.mocked(listActiveTools).mockResolvedValue(TOOLS);
+    vi.mocked(listKnowledgeBases).mockResolvedValue(KNOWLEDGE_BASES);
 
     const review = await loadAgentReview("agent-1");
 
     expect(review.models).toEqual(MODELS);
+    expect(review.knowledgeBases).toEqual(KNOWLEDGE_BASES);
     expect(review.justification).toBe("model: es barato");
+  });
+});
+
+describe("loadKnowledgeBase", () => {
+  it("loads the requested base with its documents", async () => {
+    vi.mocked(getKnowledgeBase).mockResolvedValue(KNOWLEDGE_BASES[0]);
+    vi.mocked(listKnowledgeDocuments).mockResolvedValue([]);
+
+    const loaded = await loadKnowledgeBase("base-1");
+
+    expect(listKnowledgeDocuments).toHaveBeenCalledWith("base-1");
+    expect(loaded).toEqual({ base: KNOWLEDGE_BASES[0], documents: [] });
   });
 });
 

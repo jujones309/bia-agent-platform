@@ -2,23 +2,32 @@ import { readPassword, writePassword } from "@/lib/api/credentials";
 import type {
   Agent,
   AgentDetail,
+  AgentIdentityPatch,
   AgentInventoryItem,
+  AgentMetrics,
   AgentProposalRequest,
   AgentRunResult,
   AgentSpecPatch,
   AgentVersion,
   CatalogModel,
   CatalogTool,
+  DocumentDraft,
   DuplicateCheckResult,
   EvalCase,
+  EvalCaseDraft,
   EvalReport,
+  IngestionResult,
+  KnowledgeBase,
+  KnowledgeBaseDraft,
+  KnowledgeDocument,
   ModelInventoryItem,
   OrchestrationInventoryItem,
   ProposedAgent,
+  RunOrigin,
   RunRecord,
 } from "@/lib/api/types";
 
-const HttpMethod = { GET: "GET", POST: "POST", PATCH: "PATCH" } as const;
+const HttpMethod = { GET: "GET", POST: "POST", PATCH: "PATCH", DELETE: "DELETE" } as const;
 type HttpMethod = (typeof HttpMethod)[keyof typeof HttpMethod];
 
 const STATUS_UNAUTHORIZED = 401;
@@ -99,11 +108,20 @@ async function send(
   }
 }
 
-async function request<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
+async function sendChecked(method: HttpMethod, path: string, body?: unknown): Promise<Response> {
   const response = await send(method, path, readPassword(), body);
   if (response.status === STATUS_UNAUTHORIZED) writePassword(null);
   if (!response.ok) throw new ApiError(response.status, await readErrorMessage(response));
+  return response;
+}
+
+async function request<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
+  const response = await sendChecked(method, path, body);
   return (await response.json()) as T;
+}
+
+async function requestRemoval(path: string): Promise<void> {
+  await sendChecked(HttpMethod.DELETE, path);
 }
 
 /**
@@ -214,6 +232,50 @@ export function patchAgent(agentId: string, patch: AgentSpecPatch): Promise<Agen
 }
 
 /**
+ * Calls `PATCH /agents/{id}/identity`, which embeds a new description.
+ *
+ * @param agentId - The agent to change.
+ * @param patch - The fields of its identity that change.
+ * @returns The agent with its new identity.
+ */
+export function updateAgentIdentity(agentId: string, patch: AgentIdentityPatch): Promise<AgentDetail> {
+  return request(HttpMethod.PATCH, `/agents/${agentId}/identity`, patch);
+}
+
+/**
+ * Calls `POST /agents/{id}/archive`.
+ *
+ * @param agentId - The agent to archive.
+ * @returns The archived agent.
+ */
+export function archiveAgent(agentId: string): Promise<AgentDetail> {
+  return request(HttpMethod.POST, `/agents/${agentId}/archive`);
+}
+
+/**
+ * Calls `POST /agents/{id}/versions/{n}/activate`.
+ *
+ * @param agentId - The agent to change.
+ * @param versionNumber - The version to go back to.
+ * @returns The agent pointing at that version.
+ */
+export function activateAgentVersion(agentId: string, versionNumber: number): Promise<AgentDetail> {
+  return request(HttpMethod.POST, `/agents/${agentId}/versions/${versionNumber}/activate`);
+}
+
+/**
+ * Reads `GET /agents/{id}/metrics`.
+ *
+ * @param agentId - The agent to summarize.
+ * @param origin - The only origin to count, or null for all of them.
+ * @returns The aggregates of its runs.
+ */
+export function getAgentMetrics(agentId: string, origin: RunOrigin | null): Promise<AgentMetrics> {
+  const filter = origin ? `?origin=${origin}` : "";
+  return request(HttpMethod.GET, `/agents/${agentId}/metrics${filter}`);
+}
+
+/**
  * Reads `GET /agents/{id}/evals`, which spends nothing.
  *
  * @param agentId - The agent to measure.
@@ -231,6 +293,28 @@ export function getEvalReport(agentId: string): Promise<EvalReport> {
  */
 export function generateEvalCases(agentId: string): Promise<EvalCase[]> {
   return request(HttpMethod.POST, `/agents/${agentId}/eval-cases/generate`);
+}
+
+/**
+ * Calls `POST /agents/{id}/eval-cases`.
+ *
+ * @param agentId - The agent the case evaluates.
+ * @param draft - What to ask and what to expect.
+ * @returns The stored case.
+ */
+export function addEvalCase(agentId: string, draft: EvalCaseDraft): Promise<EvalCase> {
+  return request(HttpMethod.POST, `/agents/${agentId}/eval-cases`, draft);
+}
+
+/**
+ * Calls `DELETE /agents/{id}/eval-cases/{case_id}`, which keeps the past results as history.
+ *
+ * @param agentId - The agent the case belongs to.
+ * @param caseId - The case to retire.
+ * @returns Nothing once it is retired.
+ */
+export function retireEvalCase(agentId: string, caseId: string): Promise<void> {
+  return requestRemoval(`/agents/${agentId}/eval-cases/${caseId}`);
 }
 
 /**
@@ -284,4 +368,71 @@ export function listRuns(agentId: string | null): Promise<RunRecord[]> {
  */
 export function getRun(runId: string): Promise<RunRecord> {
   return request(HttpMethod.GET, `/runs/${runId}`);
+}
+
+/** Reads `GET /knowledge-bases`. @returns Every knowledge base, ordered by name. */
+export function listKnowledgeBases(): Promise<KnowledgeBase[]> {
+  return request(HttpMethod.GET, "/knowledge-bases");
+}
+
+/**
+ * Reads `GET /knowledge-bases/{id}`.
+ *
+ * @param knowledgeBaseId - The base to read.
+ * @returns The base.
+ */
+export function getKnowledgeBase(knowledgeBaseId: string): Promise<KnowledgeBase> {
+  return request(HttpMethod.GET, `/knowledge-bases/${knowledgeBaseId}`);
+}
+
+/**
+ * Calls `POST /knowledge-bases`.
+ *
+ * @param draft - The name and description of the base.
+ * @returns The new base.
+ */
+export function createKnowledgeBase(draft: KnowledgeBaseDraft): Promise<KnowledgeBase> {
+  return request(HttpMethod.POST, "/knowledge-bases", draft);
+}
+
+/**
+ * Reads `GET /knowledge-bases/{id}/documents`.
+ *
+ * @param knowledgeBaseId - The base to read.
+ * @returns Its current documents, ordered by title.
+ */
+export function listKnowledgeDocuments(knowledgeBaseId: string): Promise<KnowledgeDocument[]> {
+  return request(HttpMethod.GET, `/knowledge-bases/${knowledgeBaseId}/documents`);
+}
+
+/**
+ * Calls `POST /knowledge-bases/{id}/ingest`, which replaces a document with the same title.
+ *
+ * @param knowledgeBaseId - The base that receives the document.
+ * @param draft - The document with its text.
+ * @returns How many fragments were stored.
+ */
+export function ingestDocument(knowledgeBaseId: string, draft: DocumentDraft): Promise<IngestionResult> {
+  return request(HttpMethod.POST, `/knowledge-bases/${knowledgeBaseId}/ingest`, draft);
+}
+
+/**
+ * Calls `DELETE /knowledge-bases/{id}/documents/{document_id}`.
+ *
+ * @param knowledgeBaseId - The base the document belongs to.
+ * @param documentId - The document to retire.
+ * @returns Nothing once it is retired.
+ */
+export function retireDocument(knowledgeBaseId: string, documentId: string): Promise<void> {
+  return requestRemoval(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}`);
+}
+
+/**
+ * Calls `DELETE /orchestrations/{id}`, which keeps the flow as history.
+ *
+ * @param orchestrationId - The flow to retire.
+ * @returns Nothing once it is retired.
+ */
+export function retireOrchestration(orchestrationId: string): Promise<void> {
+  return requestRemoval(`/orchestrations/${orchestrationId}`);
 }

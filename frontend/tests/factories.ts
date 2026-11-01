@@ -16,6 +16,7 @@ import type {
   CatalogTool,
   EvalCaseOutcome,
   EvalReport,
+  KnowledgeBase,
   RunRecord,
   RunStep,
 } from "@/lib/api/types";
@@ -82,6 +83,12 @@ export function buildInventoryItem(overrides: Partial<AgentInventoryItem> = {}):
 export const MODELS: CatalogModel[] = [
   { id: "model-small", name: "GPT-6 Luna", size: ModelSize.SMALL, recommended_use: "Rápido" },
   { id: "model-large", name: "GPT-6.1 Sol", size: ModelSize.LARGE, recommended_use: "Complejo" },
+];
+
+/** The knowledge bases the tests choose from. */
+export const KNOWLEDGE_BASES: KnowledgeBase[] = [
+  { id: "base-1", name: "Facturación", description: "Tarifas y procedimientos", created_at: "2026-10-31T12:00:00Z" },
+  { id: "base-2", name: "Talento", description: "Políticas internas", created_at: "2026-10-31T12:00:00Z" },
 ];
 
 /** The catalog tools the tests choose from. */

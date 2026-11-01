@@ -9,8 +9,29 @@ export const Route = {
   ORCHESTRATIONS: "/orchestrations",
   BUILDER: "/builder",
   RUNS: "/runs",
+  KNOWLEDGE: "/knowledge",
 } as const;
 export type Route = (typeof Route)[keyof typeof Route];
+
+/**
+ * Builds the path where an agent is managed: its identity, metrics, versions and archiving.
+ *
+ * @param agentId - The agent to open.
+ * @returns The path of the page.
+ */
+export function agentDetailPath(agentId: string): string {
+  return `${Route.AGENTS}/${agentId}`;
+}
+
+/**
+ * Builds the path where a knowledge base receives and loses documents.
+ *
+ * @param knowledgeBaseId - The base to open.
+ * @returns The path of the page.
+ */
+export function knowledgeBasePath(knowledgeBaseId: string): string {
+  return `${Route.KNOWLEDGE}/${knowledgeBaseId}`;
+}
 
 /**
  * Builds the path of an agent's playground.

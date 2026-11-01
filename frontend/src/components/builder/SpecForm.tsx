@@ -25,7 +25,7 @@ interface SpecFormProps {
  *
  * @param props.agent - The agent under review.
  * @param props.version - The active version the form starts from.
- * @param props.review - The justification and the catalogs to choose from.
+ * @param props.review - The justification and the catalogs and bases to choose from.
  * @param props.onSaved - Called once the spec is saved or nothing needed saving.
  * @returns The form.
  */
@@ -47,7 +47,7 @@ export function SpecForm({ agent, version, review, onSaved }: SpecFormProps) {
   return (
     <form onSubmit={(event) => handleSubmit(event)} className="grid max-w-5xl gap-4 lg:grid-cols-3">
       <div className="card space-y-4 lg:col-span-2">
-        <SpecFields values={values} models={review.models} tools={review.tools} knowledgeBaseId={version.spec.knowledge_base_id} onChange={(next) => setValues(next)} />
+        <SpecFields values={values} models={review.models} tools={review.tools} knowledgeBases={review.knowledgeBases} onChange={(next) => setValues(next)} />
         {agent.status === AgentStatus.PUBLISHED && <p className="text-sm text-amber-800">Si guardas cambios, el agente vuelve a pruebas hasta publicarlo otra vez.</p>}
         {error && <ErrorNotice message={error} />}
         <button type="submit" disabled={isRunning} className="button-primary">{isRunning ? "Guardando…" : "Guardar y continuar a evals"}</button>

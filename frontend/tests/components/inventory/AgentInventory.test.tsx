@@ -35,6 +35,23 @@ describe("AgentInventory", () => {
     expect(row.getByRole("link", { name: "Continuar" })).toHaveAttribute("href", "/builder/agent-1");
   });
 
+  it("links the name of an agent to its detail", async () => {
+    vi.mocked(listAgentInventory).mockResolvedValue([buildInventoryItem()]);
+    render(<AgentInventory />);
+
+    expect(await screen.findByRole("link", { name: "Bia Facturación" })).toHaveAttribute("href", "/agents/agent-1");
+  });
+
+  it("does not offer a chat or the Builder to an archived agent, but keeps its detail", async () => {
+    vi.mocked(listAgentInventory).mockResolvedValue([buildInventoryItem({ status: AgentStatus.ARCHIVED })]);
+    render(<AgentInventory />);
+
+    const row = within(await findRow("Bia Facturación"));
+
+    expect(row.getAllByRole("link")).toHaveLength(1);
+    expect(row.getByRole("link", { name: "Bia Facturación" })).toBeInTheDocument();
+  });
+
   it("marks system agents and does not offer them a chat, since they answer with structured output", async () => {
     vi.mocked(listAgentInventory).mockResolvedValue([buildInventoryItem({ kind: AgentKind.SYSTEM, status: AgentStatus.DRAFT })]);
     render(<AgentInventory />);

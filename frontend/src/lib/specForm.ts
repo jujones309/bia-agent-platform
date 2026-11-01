@@ -1,3 +1,4 @@
+import { KNOWLEDGE_TOOL_NAME } from "@/lib/api/types";
 import type { AgentSpec, AgentSpecPatch, AgentVersion } from "@/lib/api/types";
 
 /** The fields of a spec as the review form edits them; guardrails are one per line. */
@@ -6,6 +7,7 @@ export interface SpecFormValues {
   systemPrompt: string;
   modelId: string;
   toolNames: string[];
+  knowledgeBaseId: string | null;
   guardrailsText: string;
   maxIterations: number;
 }
@@ -38,6 +40,7 @@ export function toFormValues(spec: AgentSpec): SpecFormValues {
     systemPrompt: spec.system_prompt,
     modelId: spec.model_id,
     toolNames: spec.tool_names,
+    knowledgeBaseId: spec.knowledge_base_id,
     guardrailsText: spec.guardrails.join("\n"),
     maxIterations: spec.max_iterations,
   };
@@ -48,7 +51,6 @@ export function toFormValues(spec: AgentSpec): SpecFormValues {
  *
  * Exists because every `PATCH` creates a version and the backend rejects one without changes, so
  * saving must send only real differences. The order of the tools does not change what an agent does.
- * The knowledge base stays out because the backend offers no way to list bases to choose from.
  *
  * @param spec - The spec the form started from.
  * @param values - The current values of the form.
@@ -61,6 +63,7 @@ export function buildSpecPatch(spec: AgentSpec, values: SpecFormValues): AgentSp
     ...(values.systemPrompt !== spec.system_prompt && { system_prompt: values.systemPrompt }),
     ...(values.modelId !== spec.model_id && { model_id: values.modelId }),
     ...(!haveSameItems(values.toolNames, spec.tool_names) && { tool_names: values.toolNames }),
+    ...(values.knowledgeBaseId !== spec.knowledge_base_id && { knowledge_base_id: values.knowledgeBaseId }),
     ...(guardrails.join("\n") !== spec.guardrails.join("\n") && { guardrails }),
     ...(values.maxIterations !== spec.max_iterations && { max_iterations: values.maxIterations }),
   };
@@ -77,6 +80,38 @@ export function toggleTool(toolNames: string[], toolName: string): string[] {
   const selected = new Set(toolNames);
   if (!selected.delete(toolName)) selected.add(toolName);
   return [...selected];
+}
+
+/**
+ * Adds or removes a tool in the form, and drops the base along with the tool that reads it.
+ *
+ * Exists because the backend rejects a base without its tool, and leaving one attached would only
+ * show up as an error when saving.
+ *
+ * @param values - The current values of the form.
+ * @param toolName - The tool that was toggled.
+ * @returns The new values.
+ */
+export function withToggledTool(values: SpecFormValues, toolName: string): SpecFormValues {
+  const toolNames = toggleTool(values.toolNames, toolName);
+  const knowledgeBaseId = toolNames.includes(KNOWLEDGE_TOOL_NAME) ? values.knowledgeBaseId : null;
+  return { ...values, toolNames, knowledgeBaseId };
+}
+
+/**
+ * Chooses a knowledge base in the form, keeping the tool that reads it consistent.
+ *
+ * Exists because a person chooses "the base", not a tool name: the backend requires both or neither.
+ *
+ * @param values - The current values of the form.
+ * @param knowledgeBaseId - The chosen base, or null for none.
+ * @returns The new values.
+ */
+export function withKnowledgeBase(values: SpecFormValues, knowledgeBaseId: string | null): SpecFormValues {
+  const toolNames = new Set(values.toolNames);
+  if (knowledgeBaseId) toolNames.add(KNOWLEDGE_TOOL_NAME);
+  else toolNames.delete(KNOWLEDGE_TOOL_NAME);
+  return { ...values, knowledgeBaseId, toolNames: [...toolNames] };
 }
 
 /**
