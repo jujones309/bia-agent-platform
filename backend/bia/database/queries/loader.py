@@ -61,6 +61,8 @@ class SqlOperation(StrEnum):
     RETIRE = "retire"  # hides a row from the current reads, keeping it as history
     RENAME = "rename"
     EXISTS_BY_AGENT = "exists_by_agent"
+    UPDATE_IDENTITY = "update_identity"
+    LIST_BY_BASE = "list_by_base"
 
 
 class SqlFileNotFoundError(FileNotFoundError):

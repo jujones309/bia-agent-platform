@@ -85,6 +85,33 @@ class AgentDraft(BaseModel):
     spec: AgentSpec
 
 
+class AgentIdentityPatch(BaseModel):
+    """Describes the parts of an agent's identity to change; those left out keep their value.
+
+    Exists as the body of `PATCH /agents/{id}/identity`, apart from `AgentSpecPatch` because the
+    identity is not versioned. The creator stays out: it records who made the agent. Spaces around
+    a value are dropped, so a blank name is rejected and not stored.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = Field(default=None, min_length=1)
+    owner_area: str | None = Field(default=None, min_length=1)
+
+
+class AgentIdentity(BaseModel):
+    """Holds the complete identity an agent has after a change.
+
+    Exists so the write receives every column already resolved; built by `update_identity` and
+    consumed by `update_agent_identity`.
+    """
+
+    name: str
+    description: str
+    owner_area: str
+
+
 class Agent(BaseModel):
     """Represents the stable identity of an agent, whatever its version.
 

@@ -3,7 +3,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from bia.agents.artifacts import AgentSpec
+from bia.agents.artifacts import AgentIdentityPatch, AgentSpec
 
 
 def _spec_values() -> dict[str, object]:
@@ -35,3 +35,17 @@ def test_spec_rejects_unknown_fields() -> None:
     """Verifies a setting the runtime would ignore, like temperature, fails loudly."""
     with pytest.raises(ValidationError, match="temperature"):
         AgentSpec.model_validate({**_spec_values(), "temperature": 0.2})
+
+
+def test_identity_patch_drops_surrounding_spaces_and_rejects_a_blank_value() -> None:
+    """Verifies a name of only spaces cannot empty the inventories."""
+    assert AgentIdentityPatch(name="  Nuevo ").name == "Nuevo"
+
+    with pytest.raises(ValidationError):
+        AgentIdentityPatch(name="   ")
+
+
+def test_identity_patch_does_not_accept_the_creator() -> None:
+    """Verifies who made an agent is not editable, even by a hand-written request."""
+    with pytest.raises(ValidationError):
+        AgentIdentityPatch.model_validate({"creator": "Otra persona"})

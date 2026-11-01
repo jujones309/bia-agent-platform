@@ -5,12 +5,23 @@ import pytest
 from sqlalchemy import Connection, Engine, Uuid, column, select, table, update
 
 from bia.agents import registry as registry_module
-from bia.agents.artifacts import AgentDraft, AgentKind, AgentSpec, AgentSpecPatch, AgentStatus
+from bia.agents.artifacts import (
+    AgentDraft,
+    AgentIdentityPatch,
+    AgentKind,
+    AgentSpec,
+    AgentSpecPatch,
+    AgentStatus,
+)
 from bia.agents.registry import (
+    AgentNotManageableError,
+    UnchangedAgentIdentityError,
     activate_version,
     add_version,
+    archive_agent,
     create_agent,
     get_agent_detail,
+    update_identity,
 )
 from bia.agents.repository import (
     AgentNotFoundError,
@@ -20,6 +31,7 @@ from bia.agents.repository import (
     set_agent_status,
 )
 from bia.agents.validation import InvalidAgentSpecError
+from bia.builder.duplicates.search import find_candidates
 from bia.builder.system_agents import EVAL_JUDGE_AGENT_ID, sync_system_agents
 from bia.catalog.models.repository import EmbeddingModelUnavailableError
 from bia.catalog.tools.sync import sync_tools
@@ -31,6 +43,7 @@ from bia.rag.repository import insert_knowledge_base
 from bia.runtime.execution import load_agent_execution
 from bia.tracing.artifacts import RunOrigin, RunStatus, StepType
 from bia.tracing.repository import list_runs
+from tests.builder.duplicates.seed import hide_published_agents
 from tests.providers.fake import FakeModelProvider
 from tests.tracing.seed import insert_model
 
@@ -507,3 +520,212 @@ def test_create_agent_stores_the_justification_of_the_designer(
         justifications = [v.designer_justification for v in list_versions(session, agent_id)]
 
     assert justifications == ["model: es barato", None]
+
+
+def _publish(connection: Connection, agent_id: UUID) -> None:
+    """Marks an agent as published, without going through the gate.
+
+    Args:
+        connection: The connection of the test's transaction.
+        agent_id: The agent to publish.
+
+    Returns:
+        None: the status is written inside the transaction.
+    """
+    with database_session(connection) as session:
+        set_agent_status(session, agent_id, AgentStatus.PUBLISHED)
+
+
+def _candidate_ids(connection: Connection, provider: FakeModelProvider, need: str) -> list[UUID]:
+    """Runs the duplicate search for a text.
+
+    Args:
+        connection: The connection of the test's transaction.
+        provider: The provider that embeds the text.
+        need: The text to search.
+
+    Returns:
+        list[UUID]: the agents found, closest first.
+    """
+    embedding = provider.embed([need], "any").embeddings[0]
+    with database_session(connection) as session:
+        return [candidate.agent_id for candidate in find_candidates(session, embedding)]
+
+
+def test_archiving_takes_an_agent_out_of_the_duplicate_search_and_keeps_its_traces(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies the promise of archiving: nobody is sent to it, and its record survives."""
+    hide_published_agents(connection)
+    agent_id = _new_agent(connection)
+    _publish(connection, agent_id)
+    need = "Responde dudas de facturas"
+    assert _candidate_ids(connection, provider, need) == [agent_id]
+    with database_session(connection) as session:
+        runs_before = list_runs(session, agent_id, 10)
+
+    with database_session(connection) as session:
+        detail = archive_agent(session, agent_id)
+
+    assert detail.agent.status is AgentStatus.ARCHIVED
+    assert detail.active_version is not None
+    assert _candidate_ids(connection, provider, need) == []
+    with database_session(connection) as session:
+        assert runs_before
+        assert list_runs(session, agent_id, 10) == runs_before
+
+
+def test_archiving_twice_changes_nothing(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies a repeated click is harmless and does not touch the record."""
+    agent_id = _new_agent(connection)
+
+    with database_session(connection) as session:
+        first = archive_agent(session, agent_id)
+        second = archive_agent(session, agent_id)
+
+    assert second == first
+
+
+def test_archiving_rejects_a_system_agent_and_an_unknown_one(connection: Connection) -> None:
+    """Verifies the parts of the platform cannot be retired by accident."""
+    with database_session(connection) as session:
+        sync_system_agents(session)
+        with pytest.raises(AgentNotManageableError):
+            archive_agent(session, EVAL_JUDGE_AGENT_ID)
+        with pytest.raises(AgentNotFoundError):
+            archive_agent(session, uuid4())
+
+
+def test_a_new_description_is_what_the_duplicate_search_finds(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies the embedding moves with the text: the new one matches exactly, the old one not."""
+    hide_published_agents(connection)
+    agent_id = _new_agent(connection)
+    _publish(connection, agent_id)
+    new_description = "Resume reuniones"
+    expected = provider.embed([new_description], "any").embeddings[0]
+
+    update_identity(connection, agent_id, AgentIdentityPatch(description=new_description))
+
+    with database_session(connection) as session:
+        candidate = find_candidates(session, expected)[0]
+    assert candidate.agent_id == agent_id
+    assert candidate.description == new_description
+    assert candidate.similarity == pytest.approx(1.0)
+
+
+def test_changing_the_description_traces_the_embedding_and_keeps_the_status(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies every LLM call is traced, and that a published agent stays published."""
+    agent_id = _new_agent(connection)
+    _publish(connection, agent_id)
+    with database_session(connection) as session:
+        runs_before = len(list_runs(session, agent_id, 10))
+
+    detail = update_identity(connection, agent_id, AgentIdentityPatch(description="Resume"))
+
+    assert detail.agent.status is AgentStatus.PUBLISHED
+    assert detail.active_version is not None
+    with database_session(connection) as session:
+        runs = list_runs(session, agent_id, 10)
+    assert len(runs) == runs_before + 1
+    assert runs[0].origin is RunOrigin.BUILDER
+    assert runs[0].input == "Resume"
+    assert runs[0].steps[0].step_type is StepType.LLM_CALL
+
+
+def test_changing_only_the_name_and_area_pays_for_nothing_and_keeps_the_embedding(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies no embedding is requested, and the old description is still findable."""
+    hide_published_agents(connection)
+    agent_id = _new_agent(connection)
+    _publish(connection, agent_id)
+    calls_before = len(provider.requested_models)
+
+    detail = update_identity(
+        connection, agent_id, AgentIdentityPatch(name="Nuevo", owner_area="Otra")
+    )
+
+    assert (detail.agent.name, detail.agent.owner_area) == ("Nuevo", "Otra")
+    assert detail.agent.description == "Responde dudas de facturas"
+    assert len(provider.requested_models) == calls_before
+    assert _candidate_ids(connection, provider, "Responde dudas de facturas") == [agent_id]
+
+
+def test_a_failed_embedding_leaves_the_identity_untouched(
+    connection: Connection, provider: FakeModelProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies the text and its vector cannot get out of step, not even in the name."""
+    agent_id = _new_agent(connection)
+    monkeypatch.setattr(provider, "embed", _raise_provider_error)
+
+    with pytest.raises(ProviderError):
+        update_identity(
+            connection, agent_id, AgentIdentityPatch(name="Nuevo", description="Otra cosa")
+        )
+
+    with database_session(connection) as session:
+        agent = get_agent_detail(session, agent_id).agent
+    assert (agent.name, agent.description) == ("Asistente", "Responde dudas de facturas")
+
+
+def test_an_identity_without_changes_is_rejected_without_spending(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies repeating the current values neither embeds nor writes."""
+    agent_id = _new_agent(connection)
+    calls_before = len(provider.requested_models)
+
+    with pytest.raises(UnchangedAgentIdentityError):
+        update_identity(connection, agent_id, AgentIdentityPatch(name="  Asistente  "))
+
+    assert len(provider.requested_models) == calls_before
+
+
+def test_the_identity_of_an_archived_agent_cannot_change(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies an archived agent stays as it was, and the refusal spends nothing."""
+    agent_id = _new_agent(connection)
+    with database_session(connection) as session:
+        archive_agent(session, agent_id)
+    calls_before = len(provider.requested_models)
+
+    with pytest.raises(AgentNotManageableError):
+        update_identity(connection, agent_id, AgentIdentityPatch(description="Otra"))
+
+    assert len(provider.requested_models) == calls_before
+
+
+def test_the_identity_of_a_system_agent_cannot_change(
+    connection: Connection, provider: FakeModelProvider
+) -> None:
+    """Verifies the code keeps owning system agents, whose next sync would undo the change."""
+    with database_session(connection) as session:
+        sync_system_agents(session)
+    calls_before = len(provider.requested_models)
+
+    with pytest.raises(AgentNotManageableError):
+        update_identity(connection, EVAL_JUDGE_AGENT_ID, AgentIdentityPatch(description="Otra"))
+
+    assert len(provider.requested_models) == calls_before
+
+
+def _raise_provider_error(*_args: object) -> None:
+    """Simulates an embedding call that fails.
+
+    Args:
+        _args: The unused arguments of the call.
+
+    Returns:
+        None: it always raises.
+
+    Raises:
+        ProviderError: Always.
+    """
+    raise ProviderError("provider down")

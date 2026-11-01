@@ -8,6 +8,8 @@ from bia.agents.artifacts import (
     Agent,
     AgentDetail,
     AgentDraft,
+    AgentIdentity,
+    AgentIdentityPatch,
     AgentKind,
     AgentSpecPatch,
     AgentStatus,
@@ -23,11 +25,13 @@ from bia.agents.repository import (
     lock_agent,
     set_active_version,
     set_agent_status,
+    update_agent_identity,
 )
 from bia.agents.validation import merge_spec_patch, validate_new_spec, validate_rollback_spec
 from bia.catalog.models.artifacts import CatalogModel
 from bia.catalog.models.repository import find_embedding_model
 from bia.database.connection import database_session
+from bia.orchestrations.flows import rename_single_agent_flow
 from bia.providers.artifacts import EmbeddingResult
 from bia.providers.cost import compute_cost
 from bia.providers.factory import get_provider
@@ -35,6 +39,23 @@ from bia.tracing.artifacts import RunOrigin, RunStepDraft, StepType
 from bia.tracing.recorder import RunRecorder
 
 logger = logging.getLogger(__name__)
+
+
+class AgentNotManageableError(ValueError):
+    """Signals that an agent cannot be archived or have its identity changed.
+
+    Exists because system agents follow the code, which would overwrite any change at the next
+    startup, and archived agents are retired. Raised by this module and translated to a 409 by
+    `bia/api/agents.py`.
+    """
+
+
+class UnchangedAgentIdentityError(ValueError):
+    """Signals that a change of identity changes nothing.
+
+    Exists so a request that would pay for nothing fails clearly. Raised by `update_identity` and
+    translated to a 422 by `bia/api/agents.py`.
+    """
 
 
 def _trace_embedding(
@@ -194,6 +215,174 @@ def activate_version(session: Session, agent_id: UUID, version_number: int) -> A
     return AgentDetail(agent=agent, active_version=version)
 
 
+def _require_user_agent(agent: Agent) -> None:
+    """Rejects a part of the platform.
+
+    Exists as the guard of every change that only applies to the agents of employees.
+
+    Args:
+        agent: The agent to check.
+
+    Returns:
+        None: the agent belongs to an employee.
+
+    Raises:
+        AgentNotManageableError: If it is a system agent.
+    """
+    if agent.kind is AgentKind.SYSTEM:
+        raise AgentNotManageableError(f"Agent {agent.id} is a part of the platform")
+
+
+def archive_agent(session: Session, agent_id: UUID) -> AgentDetail:
+    """Retires an agent from the registry, keeping its versions, cases and traces.
+
+    Exists so an agent nobody should reuse leaves the duplicate search, which only reads published
+    agents, without losing its audit record; used by the agents API. Archiving an archived agent
+    changes nothing and is not an error.
+
+    Args:
+        session: The open session whose transaction contains the change.
+        agent_id: The agent to archive.
+
+    Returns:
+        AgentDetail: the archived agent with its active version.
+
+    Raises:
+        AgentNotFoundError: If no agent has that identifier.
+        AgentNotManageableError: If it is a system agent.
+    """
+    agent = lock_agent(session, agent_id)
+    _require_user_agent(agent)
+    if agent.status is not AgentStatus.ARCHIVED:
+        agent = set_agent_status(session, agent_id, AgentStatus.ARCHIVED)
+        logger.info("Agent %s archived", agent_id)
+    return AgentDetail(agent=agent, active_version=get_active_version_or_none(session, agent_id))
+
+
+def _require_identity_editable(agent: Agent) -> None:
+    """Rejects an agent whose identity must not change.
+
+    Exists because the check runs twice: before paying for the embedding and under the lock.
+
+    Args:
+        agent: The agent to check.
+
+    Returns:
+        None: the identity can change.
+
+    Raises:
+        AgentNotManageableError: If it is a system agent or it was archived.
+    """
+    _require_user_agent(agent)
+    if agent.status is AgentStatus.ARCHIVED:
+        raise AgentNotManageableError(f"Agent {agent.id} is archived")
+
+
+def _merge_identity(agent: Agent, patch: AgentIdentityPatch) -> AgentIdentity:
+    """Applies a change to the identity of an agent, and rejects one that changes nothing.
+
+    Exists to keep the merge out of `update_identity`, which reads as its steps.
+
+    Args:
+        agent: The agent as it stands.
+        patch: The fields to change.
+
+    Returns:
+        AgentIdentity: the complete identity it will have.
+
+    Raises:
+        UnchangedAgentIdentityError: If the result equals the current identity.
+    """
+    current = AgentIdentity(
+        name=agent.name, description=agent.description, owner_area=agent.owner_area
+    )
+    merged = current.model_copy(update=patch.model_dump(exclude_none=True))
+    if merged == current:
+        raise UnchangedAgentIdentityError(f"The change is identical to agent {agent.id}")
+    return merged
+
+
+def update_identity(
+    bind: Engine | Connection, agent_id: UUID, patch: AgentIdentityPatch
+) -> AgentDetail:
+    """Changes the name, description or area of an agent, embedding a new description.
+
+    Exists because the duplicate search compares the embedding, so a description cannot change
+    without it; used by the agents API. The identity is not versioned and the gate does not read
+    it, so the status stays. The embedding happens between two short transactions, so no connection
+    stays open during the LLM call, and a failure changes nothing.
+
+    Args:
+        bind: The database handle to read, write and trace through.
+        agent_id: The agent to change.
+        patch: The fields to change.
+
+    Returns:
+        AgentDetail: the agent with its new identity and its active version.
+
+    Raises:
+        AgentNotFoundError: If no agent has that identifier.
+        ActiveVersionNotFoundError: If it has no version to trace the embedding on.
+        AgentNotManageableError: If it is a system agent or it was archived.
+        UnchangedAgentIdentityError: If the change equals the current identity.
+        EmbeddingModelUnavailableError: If the catalog has no active embedding model.
+        ProviderError: If the embedding call fails.
+    """
+    with database_session(bind) as session:
+        agent = get_agent(session, agent_id)
+        _require_identity_editable(agent)
+        identity = _merge_identity(agent, patch)
+        version = get_active_version(session, agent_id)
+        description_changed = identity.description != agent.description
+        model = find_embedding_model(session) if description_changed else None
+    result = _embed_description(identity.description, model)
+    with database_session(bind) as session:
+        _require_identity_editable(lock_agent(session, agent_id))
+        embedding = result.embeddings[0] if result else None
+        updated = update_agent_identity(session, agent_id, identity, embedding)
+        rename_single_agent_flow(session, updated)
+    if model and result:
+        _trace_embedding(bind, version, identity.description, model, result)
+    logger.info("Agent %s changed its identity", agent_id)
+    return AgentDetail(agent=updated, active_version=version)
+
+
+def _embed_description(description: str, model: CatalogModel | None) -> EmbeddingResult | None:
+    """Embeds a description, if there is a model to do it because it changed.
+
+    Exists so `update_identity` does not branch around the call.
+
+    Args:
+        description: The text to embed.
+        model: The embedding model; None if the description did not change.
+
+    Returns:
+        EmbeddingResult | None: the outcome of the call, or None if none was needed.
+    """
+    if model is None:
+        return None
+    logger.info("Embedding the new description of an agent")
+    return get_provider(model.provider).embed([description], model.provider_model_id)
+
+
+def get_active_version_or_none(session: Session, agent_id: UUID) -> AgentVersion | None:
+    """Retrieves the active version of an agent that may have none.
+
+    Exists because rows created by hand have no version, and they must still be readable.
+
+    Args:
+        session: The open session to read through.
+        agent_id: The agent to look up.
+
+    Returns:
+        AgentVersion | None: the active version, if it has one.
+    """
+    try:
+        return get_active_version(session, agent_id)
+    except ActiveVersionNotFoundError:
+        return None
+
+
 def get_agent_detail(session: Session, agent_id: UUID) -> AgentDetail:
     """Retrieves an agent with the version it currently executes.
 
@@ -210,7 +399,4 @@ def get_agent_detail(session: Session, agent_id: UUID) -> AgentDetail:
         AgentNotFoundError: If no agent has that identifier.
     """
     agent = get_agent(session, agent_id)
-    try:
-        return AgentDetail(agent=agent, active_version=get_active_version(session, agent_id))
-    except ActiveVersionNotFoundError:
-        return AgentDetail(agent=agent, active_version=None)
+    return AgentDetail(agent=agent, active_version=get_active_version_or_none(session, agent_id))

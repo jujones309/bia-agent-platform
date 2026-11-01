@@ -13,6 +13,7 @@ from bia.agents.artifacts import (
     AgentStatus,
     AgentVersion,
 )
+from bia.agents.registry import AgentNotManageableError, UnchangedAgentIdentityError
 from bia.agents.repository import (
     ActiveVersionNotFoundError,
     AgentNotFoundError,
@@ -303,3 +304,96 @@ def test_activate_explains_why_it_could_not_roll_back(
 def test_agents_endpoints_require_credentials() -> None:
     """Verifies the registry stays behind the shared password."""
     assert TestClient(app).get("/agents").status_code == 401
+
+
+def test_archive_answers_with_the_archived_agent(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies the route archives the agent in the path and returns what the registry says."""
+    detail = _detail()
+    archived = []
+    monkeypatch.setattr(
+        agents_router,
+        "archive_agent",
+        lambda _session, agent_id: archived.append(agent_id) or detail,
+    )
+
+    response = client.post(f"/agents/{detail.agent.id}/archive")
+
+    assert response.status_code == 200
+    assert response.json()["agent"]["id"] == str(detail.agent.id)
+    assert archived == [detail.agent.id]
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status"),
+    [
+        (AgentNotFoundError("There is no agent"), 404),
+        (AgentNotManageableError("It is a part of the platform"), 409),
+    ],
+)
+def test_archive_translates_each_failure(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    expected_status: int,
+) -> None:
+    """Verifies each failure reaches the person with its own status and reason."""
+    monkeypatch.setattr(agents_router, "archive_agent", _Raiser(error))
+
+    response = client.post(f"/agents/{uuid4()}/archive")
+
+    assert response.status_code == expected_status
+    assert response.json()["detail"] == str(error)
+
+
+def test_identity_reaches_the_registry_with_only_what_was_sent(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifies the body arrives as a partial change."""
+    detail = _detail()
+    patches = []
+    monkeypatch.setattr(
+        agents_router,
+        "update_identity",
+        lambda _engine, _agent_id, patch: patches.append(patch) or detail,
+    )
+
+    response = client.patch(f"/agents/{detail.agent.id}/identity", json={"name": "Nuevo"})
+
+    assert response.status_code == 200
+    assert patches[0].model_dump(exclude_none=True) == {"name": "Nuevo"}
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status"),
+    [
+        (AgentNotFoundError("There is no agent"), 404),
+        (ActiveVersionNotFoundError("It has no version"), 404),
+        (AgentNotManageableError("It is archived"), 409),
+        (UnchangedAgentIdentityError("Nothing changes"), 422),
+        (ProviderError("Provider down"), 502),
+        (EmbeddingModelUnavailableError("No embedding model"), 503),
+    ],
+)
+def test_identity_translates_each_failure(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    expected_status: int,
+) -> None:
+    """Verifies each failure reaches the person with its own status and reason."""
+    monkeypatch.setattr(agents_router, "update_identity", _Raiser(error))
+
+    response = client.patch(f"/agents/{uuid4()}/identity", json={"name": "Nuevo"})
+
+    assert response.status_code == expected_status
+    assert response.json()["detail"] == str(error)
+
+
+def test_identity_rejects_a_blank_name_and_the_creator(client: TestClient) -> None:
+    """Verifies the contract stops both before reaching the registry."""
+    agent_id = uuid4()
+
+    assert client.patch(f"/agents/{agent_id}/identity", json={"name": " "}).status_code == 422
+    assert client.patch(f"/agents/{agent_id}/identity", json={"creator": "X"}).status_code == 422

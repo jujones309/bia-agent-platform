@@ -5,12 +5,23 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
-from bia.agents.artifacts import Agent, AgentDetail, AgentDraft, AgentSpecPatch, AgentVersion
+from bia.agents.artifacts import (
+    Agent,
+    AgentDetail,
+    AgentDraft,
+    AgentIdentityPatch,
+    AgentSpecPatch,
+    AgentVersion,
+)
 from bia.agents.registry import (
+    AgentNotManageableError,
+    UnchangedAgentIdentityError,
     activate_version,
     add_version,
+    archive_agent,
     create_agent,
     get_agent_detail,
+    update_identity,
 )
 from bia.agents.repository import (
     ActiveVersionNotFoundError,
@@ -126,6 +137,69 @@ def patch_agent(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
     except InvalidAgentSpecError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+
+
+@router.patch("/{agent_id}/identity", response_model=AgentDetail)
+def patch_agent_identity(
+    agent_id: UUID,
+    patch: AgentIdentityPatch,
+    engine: Annotated[Engine, Depends(get_database_engine)],
+) -> AgentDetail:
+    """Changes the name, description or area of an agent.
+
+    Exists because these are not part of the versioned spec; served as
+    `PATCH /agents/{id}/identity`. Uses the engine because a request-scoped session would stay open
+    during the embedding call.
+
+    Args:
+        agent_id: The agent to change.
+        patch: The fields to change.
+        engine: The engine to read, write and trace through.
+
+    Returns:
+        AgentDetail: the agent with its new identity.
+
+    Raises:
+        HTTPException: A 404 if the agent or its version does not exist, a 409 if it is a system or
+            archived agent, a 422 if nothing changes, a 502 if the embedding call fails, or a 503
+            if the catalog has no embedding model.
+    """
+    try:
+        return update_identity(engine, agent_id, patch)
+    except (AgentNotFoundError, ActiveVersionNotFoundError) as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+    except AgentNotManageableError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+    except UnchangedAgentIdentityError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+    except ProviderError as error:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(error)) from error
+    except EmbeddingModelUnavailableError as error:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(error)) from error
+
+
+@router.post("/{agent_id}/archive", response_model=AgentDetail)
+def post_archive(agent_id: UUID, session: Annotated[Session, Depends(get_session)]) -> AgentDetail:
+    """Archives an agent, which leaves the duplicate search and keeps its traces.
+
+    Exists so an agent can be retired without SQL; served as `POST /agents/{id}/archive`.
+
+    Args:
+        agent_id: The agent to archive.
+        session: The session of the request.
+
+    Returns:
+        AgentDetail: the archived agent.
+
+    Raises:
+        HTTPException: A 404 if no agent has that identifier, or a 409 if it is a system agent.
+    """
+    try:
+        return archive_agent(session, agent_id)
+    except AgentNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+    except AgentNotManageableError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
 
 @router.get("/{agent_id}/versions", response_model=list[AgentVersion])

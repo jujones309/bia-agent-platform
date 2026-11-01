@@ -4,7 +4,15 @@ from uuid import UUID
 from sqlalchemy import Result, text
 from sqlalchemy.orm import Session
 
-from bia.agents.artifacts import Agent, AgentDraft, AgentKind, AgentSpec, AgentStatus, AgentVersion
+from bia.agents.artifacts import (
+    Agent,
+    AgentDraft,
+    AgentIdentity,
+    AgentKind,
+    AgentSpec,
+    AgentStatus,
+    AgentVersion,
+)
 from bia.database.queries import DatabaseTable, SqlOperation, load_sql
 
 _FIRST_VERSION_NUMBER = 1
@@ -160,6 +168,38 @@ def set_agent_status(session: Session, agent_id: UUID, status: AgentStatus) -> A
     """
     sql = load_sql(DatabaseTable.AGENTS, SqlOperation.SET_STATUS)
     parameters = {"agent_id": str(agent_id), "status": status}
+    return _to_agent(session.execute(text(sql), parameters), agent_id)
+
+
+def update_agent_identity(
+    session: Session,
+    agent_id: UUID,
+    identity: AgentIdentity,
+    description_embedding: list[float] | None,
+) -> Agent:
+    """Changes the name, description and area of an agent.
+
+    Exists as the single write of an agent's identity; used by `update_identity`, after locking
+    the agent.
+
+    Args:
+        session: The open session whose transaction contains the write.
+        agent_id: The agent to change.
+        identity: The complete identity it will have.
+        description_embedding: The vector of a new description; None keeps the stored one.
+
+    Returns:
+        Agent: the updated agent.
+
+    Raises:
+        AgentNotFoundError: If no agent has that identifier.
+    """
+    parameters = {
+        **identity.model_dump(),
+        "agent_id": str(agent_id),
+        "description_embedding": description_embedding and json.dumps(description_embedding),
+    }
+    sql = load_sql(DatabaseTable.AGENTS, SqlOperation.UPDATE_IDENTITY)
     return _to_agent(session.execute(text(sql), parameters), agent_id)
 
 
